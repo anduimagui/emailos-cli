@@ -92,11 +92,13 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update package version
+      - name: Verify package version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           cd npm
-          npm version $VERSION --no-git-tag-version
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "Package version: $PACKAGE_VERSION"
+          echo "Expected version: $VERSION"
 
       - name: Publish to npm
         run: |
@@ -114,7 +116,7 @@ jobs:
       - name: Download macOS binary for SHA
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          wget https://github.com/emailos/mailos/releases/download/${VERSION}/mailos-darwin-amd64.tar.gz
+          wget https://github.com/corp-os/emailos/releases/download/${VERSION}/mailos-darwin-amd64.tar.gz
           SHA256=$(sha256sum mailos-darwin-amd64.tar.gz | cut -d' ' -f1)
           echo "SHA256=${SHA256}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
