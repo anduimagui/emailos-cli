@@ -1,0 +1,30 @@
+# Version for this file.
+version: 1
+
+# List of builds.
+builds:
+  - goos: linux
+    goarch: amd64
+    binary: mailos-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - "-s -w -X main.version={{ .Tag }}"
+  - goos: linux
+    goarch: arm64
+    binary: mailos-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - "-s -w -X main.version={{ .Tag }}"
+  - goos: darwin
+    goarch: amd64
+    binary: mailos-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - "-s -w -X main.version={{ .Tag }}"
+  - goos: darwin
+    goarch: arm64
+    binary: mailos-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - "-s -w -X main.version={{ .Tag }}"
+  - goos: windows
+    goarch: amd64
+    binary: mailos-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - "-s -w -X main.version={{ .Tag }}"
