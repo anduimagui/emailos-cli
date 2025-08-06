@@ -1,0 +1,52 @@
+{
+  "name": "mailos",
+  "version": "1.0.0",
+  "description": "EmailOS - A standardized email client CLI with support for multiple providers",
+  "keywords": [
+    "email",
+    "cli",
+    "gmail",
+    "fastmail",
+    "zoho",
+    "outlook",
+    "smtp",
+    "imap",
+    "markdown"
+  ],
+  "homepage": "https://github.com/emailos/mailos",
+  "bugs": {
+    "url": "https://github.com/emailos/mailos/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emailos/mailos.git"
+  },
+  "license": "MIT",
+  "author": "EmailOS Team",
+  "main": "index.js",
+  "bin": {
+    "mailos": "./bin/mailos"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "preuninstall": "node scripts/uninstall.js",
+    "prepublishOnly": "rm -rf bin"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "dependencies": {
+    "node-fetch": "^2.6.7",
+    "tar": "^6.1.11",
+    "rimraf": "^3.0.2"
+  }
+}

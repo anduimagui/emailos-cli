@@ -1,0 +1,22 @@
+# Source files
+*.go
+go.mod
+go.sum
+Makefile
+
+# Build artifacts
+/bin/mailos*
+*.exe
+
+# Development files
+.DS_Store
+*.log
+.env
+.email/
+
+# Git
+.git/
+.gitignore
+
+# Keep only necessary files for npm
+# Everything else is ignored

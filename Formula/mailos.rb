@@ -1,0 +1,18 @@
+class Mailos < Formula
+  desc "Command-line email client powered by AI"
+  homepage "https://email-os.com"
+  url "https://github.com/emailos/mailos/archive/refs/tags/v1.0.0.tar.gz"
+  sha256 "PLACEHOLDER_SHA256"
+  license "Proprietary"
+  head "https://github.com/emailos/mailos.git", branch: "main"
+
+  depends_on "go" => :build
+
+  def install
+    system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=#{version}")
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/mailos --version 2>&1")
+  end
+end

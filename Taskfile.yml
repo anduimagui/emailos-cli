@@ -1,0 +1,71 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the mailos binary locally
+    cmds:
+      - go build -o mailos cmd/mailos/main.go
+
+  install:
+    desc: Install mailos globally
+    cmds:
+      - go install ./cmd/mailos
+      - echo "✓ Installed mailos to $(go env GOPATH)/bin/mailos"
+
+  update:
+    desc: Build and install mailos globally
+    cmds:
+      - task: install
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f mailos
+      - go clean
+
+  dev:
+    desc: Build and run locally
+    cmds:
+      - task: build
+      - ./mailos {{.CLI_ARGS}}
+
+  uninstall:
+    desc: Uninstall mailos from global installation
+    cmds:
+      - rm -f $(go env GOPATH)/bin/mailos
+      - echo "✓ Uninstalled mailos"
+
+  npm-pack:
+    desc: Build npm package for distribution
+    dir: npm
+    cmds:
+      - npm pack
+      - echo "✓ NPM package created in npm/"
+
+  npm-publish:
+    desc: Publish to npm registry
+    dir: npm
+    cmds:
+      - npm publish
+      - echo "✓ Published to npm registry"
+
+  release:
+    desc: Build binaries for all platforms
+    cmds:
+      - mkdir -p dist
+      - GOOS=darwin GOARCH=amd64 go build -o dist/mailos-darwin-amd64 cmd/mailos/main.go
+      - GOOS=darwin GOARCH=arm64 go build -o dist/mailos-darwin-arm64 cmd/mailos/main.go
+      - GOOS=linux GOARCH=amd64 go build -o dist/mailos-linux-amd64 cmd/mailos/main.go
+      - GOOS=linux GOARCH=arm64 go build -o dist/mailos-linux-arm64 cmd/mailos/main.go
+      - GOOS=windows GOARCH=amd64 go build -o dist/mailos-windows-amd64.exe cmd/mailos/main.go
+      - echo "✓ Release binaries created in dist/"
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list

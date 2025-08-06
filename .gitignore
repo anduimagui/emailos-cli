@@ -1,0 +1,32 @@
+/npm/node_modules
+/emails
+
+# Binary executables
+mailos
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Debug/test scripts
+debug_test.sh
+
+# npm lock file (for libraries)
+npm/package-lock.json
+
+# GitHub directory
+.github/
+
+# macOS system files
+.DS_Store
+
+# Log files
+*.log
+
+# Environment files
+.env*
+
+# Build output directories
+dist/
+build/
+/.email
