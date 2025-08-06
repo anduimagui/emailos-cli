@@ -46,9 +46,11 @@ func configureLocal(opts ConfigureOptions) error {
 	if localConfig != nil && opts.Email == "" {
 		// Local config already exists and no command-line options provided
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("LOCAL CONFIGURATION EXISTS")
+		fmt.Println("            LOCAL CONFIGURATION EXISTS                  ")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
+		fmt.Println("📁 LOCAL SETTINGS (in this folder)")
+		fmt.Println("──────────────────────────────────")
 		fmt.Printf("Email:     %s\n", localConfig.Email)
 		if localConfig.FromEmail != "" {
 			fmt.Printf("From:      %s\n", localConfig.FromEmail)
@@ -60,14 +62,26 @@ func configureLocal(opts ConfigureOptions) error {
 		fmt.Printf("AI CLI:    %s\n", GetAICLIName(localConfig.DefaultAICLI))
 		fmt.Println()
 		
+		// New improved local menu - start with individual config options
+		configOptions := []string{
+			"📧 Change from address (" + localConfig.FromEmail + ")",
+			"👤 Change display name (" + localConfig.FromName + ")",
+			"📨 Change email provider (" + GetProviderName(localConfig.Provider) + ")",
+			"🤖 Change AI CLI (" + GetAICLIName(localConfig.DefaultAICLI) + ")",
+			"⚙️  Advanced options...",
+		}
+		
+		// Handle empty values gracefully
+		if localConfig.FromEmail == "" {
+			configOptions[0] = "📧 Set from address (not set)"
+		}
+		if localConfig.FromName == "" {
+			configOptions[1] = "👤 Set display name (not set)"
+		}
+		
 		prompt := promptui.Select{
-			Label: "What would you like to do?",
-			Items: []string{
-				"Keep current configuration",
-				"Edit current configuration",
-				"Replace with new configuration",
-				"Remove local configuration",
-			},
+			Label: "What would you like to configure?",
+			Items: configOptions,
 		}
 		
 		index, _, err := prompt.Run()
@@ -76,38 +90,26 @@ func configureLocal(opts ConfigureOptions) error {
 		}
 		
 		switch index {
-		case 0: // Keep current
-			fmt.Println("\n✓ Configuration unchanged.")
-			return nil
-		case 1: // Edit current
-			return editConfiguration(localConfig, localConfigPath, false)
-		case 2: // Replace with new
-			// Continue with setup below
-		case 3: // Remove
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("\nAre you sure you want to remove the local configuration? (y/n): ")
-			response, _ := reader.ReadString('\n')
-			response = strings.TrimSpace(strings.ToLower(response))
-			
-			if response == "y" || response == "yes" {
-				if err := os.RemoveAll(".email"); err != nil {
-					return fmt.Errorf("failed to remove local configuration: %v", err)
-				}
-				fmt.Println("✓ Local configuration removed.")
-			} else {
-				fmt.Println("Cancelled.")
-			}
-			return nil
+		case 0: // Change from address
+			return changeFromAddressLocal(localConfig, localConfigPath)
+		case 1: // Change display name
+			return changeDisplayNameLocal(localConfig, localConfigPath)
+		case 2: // Change email provider
+			return changeEmailProviderLocal(localConfig, localConfigPath)
+		case 3: // Change AI CLI
+			return changeAICLILocal(localConfig, localConfigPath)
+		case 4: // Advanced options
+			return showAdvancedLocalOptions(localConfig, localConfigPath)
 		}
 	}
 	
 	// Create new local configuration
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("CREATE LOCAL CONFIGURATION")
+	fmt.Println("              CREATE LOCAL CONFIGURATION                ")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	fmt.Println("This will create a .email configuration in the current")
-	fmt.Println("directory for project-specific email settings.")
+	fmt.Println("📁 This will create a .email configuration in the current")
+	fmt.Println("   directory for project-specific email settings.")
 	fmt.Println()
 	
 	return setupConfigWithOptions(opts, true)
@@ -127,9 +129,11 @@ func configureGlobal(opts ConfigureOptions) error {
 	if globalConfig != nil && opts.Email == "" {
 		// Global config already exists and no command-line options provided
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("GLOBAL CONFIGURATION EXISTS")
+		fmt.Println("                  EMAIL CONFIGURATION                   ")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
+		fmt.Println("📧 GLOBAL SETTINGS")
+		fmt.Println("──────────────────")
 		fmt.Printf("Email:     %s\n", globalConfig.Email)
 		if globalConfig.FromEmail != "" {
 			fmt.Printf("From:      %s\n", globalConfig.FromEmail)
@@ -141,13 +145,45 @@ func configureGlobal(opts ConfigureOptions) error {
 		fmt.Printf("AI CLI:    %s\n", GetAICLIName(globalConfig.DefaultAICLI))
 		fmt.Println()
 		
+		// Check if local config exists
+		localConfigPath := filepath.Join(".email", "config.json")
+		localConfig, _ := LoadConfigFromPath(localConfigPath)
+		
+		if localConfig != nil {
+			fmt.Println("📁 LOCAL SETTINGS (in this folder)")
+			fmt.Println("──────────────────────────────────")
+			fmt.Printf("Email:     %s\n", localConfig.Email)
+			if localConfig.FromEmail != "" {
+				fmt.Printf("From:      %s\n", localConfig.FromEmail)
+			}
+			if localConfig.FromName != "" {
+				fmt.Printf("Name:      %s\n", localConfig.FromName)
+			}
+			fmt.Printf("Provider:  %s\n", GetProviderName(localConfig.Provider))
+			fmt.Printf("AI CLI:    %s\n", GetAICLIName(localConfig.DefaultAICLI))
+			fmt.Println()
+		}
+		
+		// New improved menu - start with individual config options
+		configOptions := []string{
+			"📧 Change from address (" + globalConfig.FromEmail + ")",
+			"👤 Change display name (" + globalConfig.FromName + ")",
+			"📨 Change email provider (" + GetProviderName(globalConfig.Provider) + ")",
+			"🤖 Change AI CLI (" + GetAICLIName(globalConfig.DefaultAICLI) + ")",
+			"⚙️  Advanced options...",
+		}
+		
+		// Handle empty values gracefully
+		if globalConfig.FromEmail == "" {
+			configOptions[0] = "📧 Set from address (not set)"
+		}
+		if globalConfig.FromName == "" {
+			configOptions[1] = "👤 Set display name (not set)"
+		}
+		
 		prompt := promptui.Select{
-			Label: "What would you like to do?",
-			Items: []string{
-				"Keep current configuration",
-				"Edit current configuration",
-				"Replace with new configuration",
-			},
+			Label: "What would you like to configure?",
+			Items: configOptions,
 		}
 		
 		index, _, err := prompt.Run()
@@ -156,22 +192,25 @@ func configureGlobal(opts ConfigureOptions) error {
 		}
 		
 		switch index {
-		case 0: // Keep current
-			fmt.Println("\n✓ Configuration unchanged.")
-			return nil
-		case 1: // Edit current
-			return editConfiguration(globalConfig, globalConfigPath, true)
-		case 2: // Replace with new
-			// Continue with setup below
+		case 0: // Change from address
+			return changeFromAddress(globalConfig, globalConfigPath)
+		case 1: // Change display name
+			return changeDisplayName(globalConfig, globalConfigPath)
+		case 2: // Change email provider
+			return changeEmailProvider(globalConfig, globalConfigPath)
+		case 3: // Change AI CLI
+			return changeAICLI(globalConfig, globalConfigPath)
+		case 4: // Advanced options
+			return showAdvancedOptions(globalConfig, globalConfigPath, localConfig, localConfigPath)
 		}
 	}
 	
 	// Create new global configuration
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("UPDATE GLOBAL CONFIGURATION")
+	fmt.Println("              CREATE GLOBAL CONFIGURATION               ")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	fmt.Println("This will update your global email configuration")
+	fmt.Println("This will create your global email configuration")
 	fmt.Println("in ~/.email/ that is used by default.")
 	fmt.Println()
 	
@@ -183,9 +222,13 @@ func editConfiguration(config *Config, configPath string, isGlobal bool) error {
 	reader := bufio.NewReader(os.Stdin)
 	
 	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("EDIT CONFIGURATION")
+	if isGlobal {
+		fmt.Println("                 EDIT GLOBAL CONFIGURATION              ")
+	} else {
+		fmt.Println("                 EDIT LOCAL CONFIGURATION               ")
+	}
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("\nPress Enter to keep current value, or type new value:")
+	fmt.Println("\n📝 Press Enter to keep current value, or type new value:")
 	fmt.Println()
 
 	// Edit from email
@@ -555,6 +598,419 @@ func isValidEmail(email string) bool {
 	// Basic email validation regex
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	return emailRegex.MatchString(email)
+}
+
+// changeFromAddress allows user to change just the from address
+func changeFromAddress(config *Config, configPath string) error {
+	reader := bufio.NewReader(os.Stdin)
+	
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("                 CHANGE FROM ADDRESS                   ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	if config.FromEmail != "" {
+		fmt.Printf("\nCurrent from address: %s\n", config.FromEmail)
+	} else {
+		fmt.Printf("\nCurrent from address: %s (using account email)\n", config.Email)
+	}
+	
+	fmt.Print("\nEnter new from address (press Enter to use account email): ")
+	newFrom, _ := reader.ReadString('\n')
+	newFrom = strings.TrimSpace(newFrom)
+	
+	if newFrom != "" && !isValidEmail(newFrom) {
+		fmt.Println("Invalid email address. Keeping current setting.")
+		return nil
+	}
+	
+	config.FromEmail = newFrom
+	
+	if err := SaveConfig(config); err != nil {
+		return fmt.Errorf("failed to save configuration: %v", err)
+	}
+	
+	if newFrom == "" {
+		fmt.Printf("\n✓ From address set to account email: %s\n", config.Email)
+	} else {
+		fmt.Printf("\n✓ From address updated to: %s\n", newFrom)
+	}
+	fmt.Println("📧 Configuration saved successfully!")
+	
+	return nil
+}
+
+// changeDisplayName allows user to change just the display name
+func changeDisplayName(config *Config, configPath string) error {
+	reader := bufio.NewReader(os.Stdin)
+	
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("                 CHANGE DISPLAY NAME                  ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	if config.FromName != "" {
+		fmt.Printf("\nCurrent display name: %s\n", config.FromName)
+	} else {
+		fmt.Println("\nNo display name currently set.")
+	}
+	
+	fmt.Print("\nEnter new display name (press Enter to remove): ")
+	newName, _ := reader.ReadString('\n')
+	newName = strings.TrimSpace(newName)
+	
+	config.FromName = newName
+	
+	if err := SaveConfig(config); err != nil {
+		return fmt.Errorf("failed to save configuration: %v", err)
+	}
+	
+	if newName == "" {
+		fmt.Println("\n✓ Display name removed.")
+	} else {
+		fmt.Printf("\n✓ Display name updated to: %s\n", newName)
+	}
+	fmt.Println("📧 Configuration saved successfully!")
+	
+	return nil
+}
+
+// changeEmailProvider allows user to change the email provider
+func changeEmailProvider(config *Config, configPath string) error {
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("                 CHANGE EMAIL PROVIDER                ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	fmt.Printf("\nCurrent provider: %s\n", GetProviderName(config.Provider))
+	fmt.Println("\n⚠️  Warning: Changing the provider will require re-entering your app password.")
+	
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("\nContinue? (y/n): ")
+	response, _ := reader.ReadString('\n')
+	response = strings.TrimSpace(strings.ToLower(response))
+	
+	if response != "y" && response != "yes" {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+	
+	// Run setup to reconfigure completely
+	return Setup()
+}
+
+// changeAICLI allows user to change just the AI CLI setting
+func changeAICLI(config *Config, configPath string) error {
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("                   CHANGE AI CLI                      ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	fmt.Printf("\nCurrent AI CLI: %s\n", GetAICLIName(config.DefaultAICLI))
+	
+	aiProviders := []string{
+		"Claude Code",
+		"Claude Code YOLO Mode (skip permissions)",
+		"OpenAI Codex",
+		"Gemini CLI", 
+		"OpenCode",
+		"None (Manual only)",
+	}
+	
+	aiPrompt := promptui.Select{
+		Label: "Select new AI CLI provider",
+		Items: aiProviders,
+	}
+	
+	aiIndex, _, err := aiPrompt.Run()
+	if err != nil {
+		fmt.Println("Selection cancelled.")
+		return nil
+	}
+	
+	var newAICLI string
+	switch aiIndex {
+	case 0:
+		newAICLI = "claude-code"
+	case 1:
+		newAICLI = "claude-code-yolo"
+	case 2:
+		newAICLI = "openai-codex"
+	case 3:
+		newAICLI = "gemini-cli"
+	case 4:
+		newAICLI = "opencode"
+	default:
+		newAICLI = "none"
+	}
+	
+	config.DefaultAICLI = newAICLI
+	
+	if err := SaveConfig(config); err != nil {
+		return fmt.Errorf("failed to save configuration: %v", err)
+	}
+	
+	fmt.Printf("\n✓ AI CLI updated to: %s\n", GetAICLIName(newAICLI))
+	fmt.Println("📧 Configuration saved successfully!")
+	
+	return nil
+}
+
+// changeFromAddressLocal allows user to change just the from address for local config
+func changeFromAddressLocal(config *Config, configPath string) error {
+	reader := bufio.NewReader(os.Stdin)
+	
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("              CHANGE FROM ADDRESS (LOCAL)              ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	if config.FromEmail != "" {
+		fmt.Printf("\nCurrent from address: %s\n", config.FromEmail)
+	} else {
+		fmt.Printf("\nCurrent from address: %s (using account email)\n", config.Email)
+	}
+	
+	fmt.Print("\nEnter new from address (press Enter to use account email): ")
+	newFrom, _ := reader.ReadString('\n')
+	newFrom = strings.TrimSpace(newFrom)
+	
+	if newFrom != "" && !isValidEmail(newFrom) {
+		fmt.Println("Invalid email address. Keeping current setting.")
+		return nil
+	}
+	
+	config.FromEmail = newFrom
+	
+	if err := saveLocalConfig(config); err != nil {
+		return fmt.Errorf("failed to save local configuration: %v", err)
+	}
+	
+	if newFrom == "" {
+		fmt.Printf("\n✓ From address set to account email: %s\n", config.Email)
+	} else {
+		fmt.Printf("\n✓ From address updated to: %s\n", newFrom)
+	}
+	fmt.Println("📁 Local configuration saved successfully!")
+	
+	return nil
+}
+
+// changeDisplayNameLocal allows user to change just the display name for local config
+func changeDisplayNameLocal(config *Config, configPath string) error {
+	reader := bufio.NewReader(os.Stdin)
+	
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("              CHANGE DISPLAY NAME (LOCAL)             ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	if config.FromName != "" {
+		fmt.Printf("\nCurrent display name: %s\n", config.FromName)
+	} else {
+		fmt.Println("\nNo display name currently set.")
+	}
+	
+	fmt.Print("\nEnter new display name (press Enter to remove): ")
+	newName, _ := reader.ReadString('\n')
+	newName = strings.TrimSpace(newName)
+	
+	config.FromName = newName
+	
+	if err := saveLocalConfig(config); err != nil {
+		return fmt.Errorf("failed to save local configuration: %v", err)
+	}
+	
+	if newName == "" {
+		fmt.Println("\n✓ Display name removed.")
+	} else {
+		fmt.Printf("\n✓ Display name updated to: %s\n", newName)
+	}
+	fmt.Println("📁 Local configuration saved successfully!")
+	
+	return nil
+}
+
+// changeEmailProviderLocal allows user to change the email provider for local config
+func changeEmailProviderLocal(config *Config, configPath string) error {
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("              CHANGE EMAIL PROVIDER (LOCAL)           ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	fmt.Printf("\nCurrent provider: %s\n", GetProviderName(config.Provider))
+	fmt.Println("\n⚠️  Warning: Changing the provider will require re-entering your app password.")
+	
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("\nContinue? (y/n): ")
+	response, _ := reader.ReadString('\n')
+	response = strings.TrimSpace(strings.ToLower(response))
+	
+	if response != "y" && response != "yes" {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+	
+	// Create new local configuration with setup flow
+	opts := ConfigureOptions{IsLocal: true}
+	return setupConfigWithOptions(opts, true)
+}
+
+// changeAICLILocal allows user to change just the AI CLI setting for local config
+func changeAICLILocal(config *Config, configPath string) error {
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("                 CHANGE AI CLI (LOCAL)                ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	fmt.Printf("\nCurrent AI CLI: %s\n", GetAICLIName(config.DefaultAICLI))
+	
+	aiProviders := []string{
+		"Claude Code",
+		"Claude Code YOLO Mode (skip permissions)",
+		"OpenAI Codex",
+		"Gemini CLI", 
+		"OpenCode",
+		"None (Manual only)",
+	}
+	
+	aiPrompt := promptui.Select{
+		Label: "Select new AI CLI provider",
+		Items: aiProviders,
+	}
+	
+	aiIndex, _, err := aiPrompt.Run()
+	if err != nil {
+		fmt.Println("Selection cancelled.")
+		return nil
+	}
+	
+	var newAICLI string
+	switch aiIndex {
+	case 0:
+		newAICLI = "claude-code"
+	case 1:
+		newAICLI = "claude-code-yolo"
+	case 2:
+		newAICLI = "openai-codex"
+	case 3:
+		newAICLI = "gemini-cli"
+	case 4:
+		newAICLI = "opencode"
+	default:
+		newAICLI = "none"
+	}
+	
+	config.DefaultAICLI = newAICLI
+	
+	if err := saveLocalConfig(config); err != nil {
+		return fmt.Errorf("failed to save local configuration: %v", err)
+	}
+	
+	fmt.Printf("\n✓ AI CLI updated to: %s\n", GetAICLIName(newAICLI))
+	fmt.Println("📁 Local configuration saved successfully!")
+	
+	return nil
+}
+
+// showAdvancedLocalOptions displays the advanced local configuration menu
+func showAdvancedLocalOptions(localConfig *Config, localConfigPath string) error {
+	menuItems := []string{
+		"✓ Keep current configuration",
+		"🔄 Replace local configuration",
+		"🗑️  Remove local configuration",
+	}
+	
+	prompt := promptui.Select{
+		Label: "Advanced local configuration options",
+		Items: menuItems,
+	}
+	
+	index, _, err := prompt.Run()
+	if err != nil {
+		return fmt.Errorf("selection cancelled: %v", err)
+	}
+	
+	switch index {
+	case 0: // Keep current
+		fmt.Println("\n✓ Configuration unchanged.")
+		return nil
+	case 1: // Replace local
+		opts := ConfigureOptions{IsLocal: true}
+		return setupConfigWithOptions(opts, true)
+	case 2: // Remove local
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("\n⚠️  Are you sure you want to remove the local configuration? (y/n): ")
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+		
+		if response == "y" || response == "yes" {
+			if err := os.RemoveAll(".email"); err != nil {
+				return fmt.Errorf("failed to remove local configuration: %v", err)
+			}
+			fmt.Println("✓ Local configuration removed.")
+		} else {
+			fmt.Println("Cancelled.")
+		}
+		return nil
+	}
+	
+	return nil
+}
+
+// showAdvancedOptions displays the advanced configuration menu
+func showAdvancedOptions(globalConfig *Config, globalConfigPath string, localConfig *Config, localConfigPath string) error {
+	var menuItems []string
+	if localConfig != nil {
+		menuItems = []string{
+			"✓ Keep current configuration",
+			"🔄 Replace global configuration",
+			"📁 Edit local configuration for this folder",
+			"🗑️  Remove local configuration",
+		}
+	} else {
+		menuItems = []string{
+			"✓ Keep current configuration", 
+			"🔄 Replace global configuration",
+			"➕ Add local configuration for this folder",
+		}
+	}
+	
+	prompt := promptui.Select{
+		Label: "Advanced configuration options",
+		Items: menuItems,
+	}
+	
+	index, _, err := prompt.Run()
+	if err != nil {
+		return fmt.Errorf("selection cancelled: %v", err)
+	}
+	
+	switch index {
+	case 0: // Keep current
+		fmt.Println("\n✓ Configuration unchanged.")
+		return nil
+	case 1: // Replace global
+		return Setup()
+	case 2: // Local configuration
+		if localConfig != nil {
+			// Edit existing local config
+			return editConfiguration(localConfig, localConfigPath, false)
+		} else {
+			// Create new local config
+			opts := ConfigureOptions{IsLocal: true}
+			return configureLocal(opts)
+		}
+	case 3: // Remove local (only available when local config exists)
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("\n⚠️  Are you sure you want to remove the local configuration? (y/n): ")
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+		
+		if response == "y" || response == "yes" {
+			if err := os.RemoveAll(".email"); err != nil {
+				return fmt.Errorf("failed to remove local configuration: %v", err)
+			}
+			fmt.Println("✓ Local configuration removed.")
+		} else {
+			fmt.Println("Cancelled.")
+		}
+		return nil
+	}
+	
+	return nil
 }
 
 // copyReadmeToCurrentDir creates the EMAILOS.md file in current directory

@@ -267,8 +267,9 @@ func IsGeneralQuery(args []string) bool {
 	
 	// Check if first argument is a known command
 	knownCommands := []string{
-		"setup", "configure", "template", "send", "read",
+		"setup", "configure", "config", "template", "send", "read",
 		"mark-read", "delete", "unsubscribe", "info", "test",
+		"report", "open", "provider",
 		"--help", "-h", "--version", "-v",
 	}
 	

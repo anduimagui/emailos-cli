@@ -65,6 +65,91 @@ tasks:
       - GOOS=windows GOARCH=amd64 go build -o dist/mailos-windows-amd64.exe cmd/mailos/main.go
       - echo "✓ Release binaries created in dist/"
 
+  publish-patch:
+    desc: Bump patch version and publish to all providers (npm, Homebrew, GitHub)
+    cmds:
+      - echo "📦 Starting patch release process..."
+      # Get current version from npm package
+      - |
+        cd npm && \
+        CURRENT_VERSION=$(node -p "require('./package.json').version") && \
+        echo "Current version: v$CURRENT_VERSION" && \
+        npm version patch --no-git-tag-version && \
+        NEW_VERSION=$(node -p "require('./package.json').version") && \
+        echo "New version: v$NEW_VERSION" && \
+        cd ..
+      # Update Homebrew formula placeholder
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        sed -i.bak "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak
+      # Commit version changes
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        git add npm/package.json Formula/mailos.rb && \
+        git commit -m "Release v$NEW_VERSION" || true
+      # Create and push tag
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        git tag "v$NEW_VERSION" && \
+        echo "✅ Tagged version v$NEW_VERSION"
+      # Push to GitHub (this triggers the release workflow)
+      - |
+        echo "🚀 Pushing to GitHub..." && \
+        git push && \
+        git push --tags
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        echo "✅ Release v$NEW_VERSION initiated!" && \
+        echo "" && \
+        echo "📋 The GitHub Actions workflow will now:" && \
+        echo "  • Build binaries for all platforms" && \
+        echo "  • Create a GitHub release" && \
+        echo "  • Publish to npm registry" && \
+        echo "  • Update Homebrew formula" && \
+        echo "" && \
+        echo "Monitor progress at: https://github.com/emailos/mailos/actions"
+
+  publish-minor:
+    desc: Bump minor version and publish to all providers
+    cmds:
+      - echo "📦 Starting minor release process..."
+      - |
+        cd npm && \
+        npm version minor --no-git-tag-version && \
+        NEW_VERSION=$(node -p "require('./package.json').version") && \
+        cd .. && \
+        sed -i.bak "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak && \
+        git add npm/package.json Formula/mailos.rb && \
+        git commit -m "Release v$NEW_VERSION" && \
+        git tag "v$NEW_VERSION" && \
+        git push && git push --tags && \
+        echo "✅ Minor release v$NEW_VERSION published!"
+
+  publish-major:
+    desc: Bump major version and publish to all providers
+    cmds:
+      - echo "📦 Starting major release process..."
+      - |
+        cd npm && \
+        npm version major --no-git-tag-version && \
+        NEW_VERSION=$(node -p "require('./package.json').version") && \
+        cd .. && \
+        sed -i.bak "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak && \
+        git add npm/package.json Formula/mailos.rb && \
+        git commit -m "Release v$NEW_VERSION" && \
+        git tag "v$NEW_VERSION" && \
+        git push && git push --tags && \
+        echo "✅ Major release v$NEW_VERSION published!"
+
+  version:
+    desc: Show current version
+    cmds:
+      - |
+        echo "Current version: v$(cd npm && node -p "require('./package.json').version")"
+
   default:
     desc: Show available tasks
     cmds:

@@ -14,25 +14,36 @@ EmailOS (mailos) is a command-line email client written in Go that provides a st
 
 ## Installation
 
-### Via npm (Recommended)
+### Via Homebrew (macOS/Linux)
 
 ```bash
-npm install -g emailos
+brew tap emailos/mailos
+brew install mailos
+```
+
+### Via npm (All Platforms)
+
+```bash
+npm install -g mailos
 ```
 
 ### Via Go
 
 ```bash
-go install github.com/emailos/mailos/cmd/mailos@latest
+go install github.com/emailos/mailos@latest
 ```
 
-### Build from source
+### Build from Source
 
 ```bash
 git clone https://github.com/emailos/mailos
 cd mailos
-go build -o mailos cmd/mailos/main.go
+go build -o mailos .
 ```
+
+### Direct Download
+
+Download pre-built binaries from [GitHub Releases](https://github.com/emailos/mailos/releases)
 
 ## Quick Start
 
