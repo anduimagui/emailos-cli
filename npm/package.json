@@ -1,7 +1,7 @@
 {
   "name": "mailos",
-  "version": "1.0.0",
-  "description": "EmailOS - A standardized email client CLI with support for multiple providers",
+  "version": "0.1.1",
+  "description": "Command-line email client with AI integration and support for multiple providers",
   "keywords": [
     "email",
     "cli",
@@ -13,7 +13,7 @@
     "imap",
     "markdown"
   ],
-  "homepage": "https://github.com/emailos/mailos",
+  "homepage": "https://email-os.com",
   "bugs": {
     "url": "https://github.com/emailos/mailos/issues"
   },
@@ -21,7 +21,7 @@
     "type": "git",
     "url": "git+https://github.com/emailos/mailos.git"
   },
-  "license": "MIT",
+  "license": "Proprietary",
   "author": "EmailOS Team",
   "main": "index.js",
   "bin": {

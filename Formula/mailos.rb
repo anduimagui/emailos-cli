@@ -1,7 +1,7 @@
 class Mailos < Formula
   desc "Command-line email client powered by AI"
   homepage "https://email-os.com"
-  url "https://github.com/emailos/mailos/archive/refs/tags/v1.0.0.tar.gz"
+  url "https://github.com/emailos/mailos/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "PLACEHOLDER_SHA256"
   license "Proprietary"
   head "https://github.com/emailos/mailos.git", branch: "main"
