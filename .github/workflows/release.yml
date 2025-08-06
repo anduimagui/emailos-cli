@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o mailos${{ matrix.ext }} .
+
+      - name: Create archive
+        run: |
+          tar czf mailos-${{ matrix.suffix }}.tar.gz mailos${{ matrix.ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mailos-${{ matrix.suffix }}
+          path: mailos-${{ matrix.suffix }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+  publish-npm:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update package version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          cd npm
+          npm version $VERSION --no-git-tag-version
+
+      - name: Publish to npm
+        run: |
+          cd npm
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS binary for SHA
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          wget https://github.com/emailos/mailos/releases/download/${VERSION}/mailos-darwin-amd64.tar.gz
+          SHA256=$(sha256sum mailos-darwin-amd64.tar.gz | cut -d' ' -f1)
+          echo "SHA256=${SHA256}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Update Homebrew formula
+        run: |
+          sed -i "s/v[0-9.]*/${VERSION}/g" Formula/mailos.rb
+          sed -i "s/PLACEHOLDER_SHA256/${SHA256}/g" Formula/mailos.rb
+
+      - name: Create Pull Request to homebrew-mailos
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Update mailos to ${{ env.VERSION }}"
+          title: "Update mailos to ${{ env.VERSION }}"
+          body: "Automated update of mailos Homebrew formula to version ${{ env.VERSION }}"
+          branch: update-${{ env.VERSION }}
+          base: main

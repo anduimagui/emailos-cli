@@ -15,7 +15,7 @@ debug_test.sh
 npm/package-lock.json
 
 # GitHub directory
-.github/
+# .github/ # Needed for GitHub Actions workflows
 
 # macOS system files
 .DS_Store
