@@ -75,7 +75,7 @@ func showEnhancedInteractiveMenu(needsProvider bool) error {
 	} else if needsProvider {
 		fmt.Printf(" | ⚠️  No AI provider (use /provider to setup)")
 	}
-	fmt.Println("\n")
+	fmt.Println()
 
 	// Show input prompt with command hints
 	fmt.Println("💡 Enter a query for AI or type '/' to see commands")
