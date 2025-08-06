@@ -1,261 +1,241 @@
-# EmailOS - Standardized Email Client
+# MailOS - AI-Powered Command Line Email Client
 
-EmailOS (mailos) is a command-line email client written in Go that provides a standardized interface for managing emails across multiple providers.
+[![npm version](https://img.shields.io/npm/v/mailos.svg)](https://www.npmjs.com/package/mailos)
+[![GitHub release](https://img.shields.io/github/release/corp-os/emailos.svg)](https://github.com/corp-os/emailos/releases)
+[![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](https://email-os.com)
 
-## Features
+MailOS is a powerful command-line email client that brings AI automation to your terminal. Send, read, and manage emails across multiple providers with natural language commands.
 
-- 🔧 Interactive setup wizard with provider selection
-- 📧 Support for multiple email providers (Gmail, Fastmail, Zoho, Outlook, Yahoo)
-- 🔒 Secure credential storage with app-specific passwords
-- ✉️ Send emails with Markdown formatting (automatically converted to HTML)
-- 📥 Read emails with filtering options
-- 🎯 Mark emails as read
-- 🚀 Fast and efficient IMAP/SMTP implementation
+## ✨ Features
 
-## Installation
+### 🤖 AI Integration
+- **Natural Language Commands**: "Send an email to John about the meeting tomorrow"
+- **Smart Email Composition**: AI helps write professional emails
+- **Intelligent Search**: Find emails using natural language queries
+- **Multiple AI Providers**: Supports Claude, GPT-4, Gemini, and more
 
-### Via Homebrew (macOS/Linux)
+### 📧 Email Management
+- **Multi-Provider Support**: Gmail, Fastmail, Outlook, Yahoo, Zoho
+- **Markdown Formatting**: Write emails in Markdown, automatically converted to HTML
+- **Interactive Mode**: Browse and manage emails with a TUI interface
+- **Batch Operations**: Process multiple emails efficiently
+- **Template System**: Save and reuse email templates
+
+### 🔒 Security
+- **App-Specific Passwords**: Never store your main password
+- **Local Storage**: Credentials stored securely on your machine
+- **License Protection**: Enterprise-grade license validation
+- **Encrypted Communications**: Secure IMAP/SMTP connections
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-brew tap emailos/mailos
-brew install mailos
+# Install via npm (recommended)
+npm install -g mailos
+
+# Or download for your platform
+# See full installation guide: docs/installation.md
 ```
 
-### Via npm (All Platforms)
+### Initial Setup
 
+```bash
+# Run interactive setup wizard
+mailos setup
+```
+
+The setup wizard will:
+1. Validate your license key (get one at https://email-os.com)
+2. Configure your email provider
+3. Set up app-specific password
+4. Configure AI integration (optional)
+
+### Basic Usage
+
+```bash
+# Send an email
+mailos send user@example.com "Meeting Tomorrow" "Let's discuss the project at 3pm"
+
+# Read recent emails
+mailos read --limit 10
+
+# Interactive mode
+mailos interactive
+
+# AI-powered email (requires AI setup)
+mailos "send an email to john@example.com thanking him for the meeting"
+```
+
+## 📖 Documentation
+
+- [Installation Guide](docs/installation.md) - Detailed installation instructions
+- [Setup Guide](docs/setup.md) - Configuration and provider setup
+- [Usage Guide](docs/usage.md) - Complete command reference
+- [AI Integration](docs/ai-integration.md) - Setting up AI features
+- [License Integration](docs/LICENSE_INTEGRATION.md) - License system details
+
+## 🎯 Use Cases
+
+### For Developers
+- Send automated reports from CI/CD pipelines
+- Monitor system alerts via email
+- Quick email responses without leaving the terminal
+
+### For Power Users
+- Manage multiple email accounts from one interface
+- Batch process emails with scripts
+- Create email workflows with AI automation
+
+### For Teams
+- Standardized email templates
+- Automated email responses
+- Integration with existing CLI tools
+
+## 🛠️ Supported Platforms
+
+| Platform | Architecture | Status |
+|----------|-------------|--------|
+| macOS | Intel (x64) | ✅ Supported |
+| macOS | Apple Silicon (ARM64) | ✅ Supported |
+| Linux | x64 | ✅ Supported |
+| Linux | ARM64 | ✅ Supported |
+| Windows | x64 | ✅ Supported |
+
+## 📦 Installation Options
+
+### npm (All Platforms)
 ```bash
 npm install -g mailos
 ```
 
-### Via Go
-
-```bash
-go install github.com/emailos/mailos@latest
-```
+### Direct Download
+Download the latest binary for your platform from [GitHub Releases](https://github.com/corp-os/emailos/releases).
 
 ### Build from Source
-
 ```bash
-git clone https://github.com/emailos/mailos
-cd mailos
+git clone https://github.com/corp-os/emailos.git
+cd emailos
 go build -o mailos .
 ```
 
-### Direct Download
+## 🔧 Configuration
 
-Download pre-built binaries from [GitHub Releases](https://github.com/emailos/mailos/releases)
-
-## Quick Start
-
-### 1. Initial Setup
-
-Run the interactive setup wizard:
-
-```bash
-mailos setup
-```
-
-The setup will:
-- Display "Welcome to EmailOS!"
-- Let you select your email provider using arrow keys
-- Prompt for your email address
-- Open your browser to create an app-specific password
-- Securely store your configuration in `~/.email/config.json`
-
-### 2. Send an Email
-
-```bash
-# Simple email
-mailos send -t recipient@example.com -s "Hello" -m "This is a test email"
-
-# With CC and BCC
-mailos send -t to@example.com -c cc@example.com -b bcc@example.com -s "Meeting" -m "Let's meet tomorrow"
-
-# From a Markdown file
-mailos send -t recipient@example.com -s "Report" -f report.md
-
-# Multiple recipients
-mailos send -t alice@example.com -t bob@example.com -s "Team Update" -m "Here's the update..."
-```
-
-### 3. Read Emails
-
-```bash
-# Read last 10 emails
-mailos read
-
-# Read unread emails only
-mailos read --unread
-
-# Read emails from specific sender
-mailos read --from sender@example.com
-
-# Read emails from last 7 days
-mailos read --days 7
-
-# Read emails from specific time ranges
-mailos read --range "Last hour"
-mailos read --range "Today"
-mailos read --range "Yesterday"
-mailos read --range "This morning"
-
-# Read with custom limit
-mailos read -n 20
-```
-
-### 4. Mark Emails as Read
-
-```bash
-# Mark specific emails as read
-mailos mark-read --ids 1,2,3
-```
-
-### 5. Generate Email Report
-
-```bash
-# Interactive time range selection
-mailos report
-
-# Specify time range directly
-mailos report --range "Last hour"
-mailos report --range "Today"
-mailos report --range "Yesterday"
-mailos report --range "This week"
-mailos report --range "Last week"
-mailos report --range "This morning"
-mailos report --range "Yesterday morning"
-mailos report --range "Last 3 days"
-mailos report --range "Last 30 days"
-
-# Save report to file
-mailos report --range "Today" --output today_report.txt
-```
-
-### 6. Show Configuration
-
-```bash
-mailos info
-```
-
-## Configuration
-
-EmailOS supports both global and local configuration:
-
-### Global Configuration
-Stored in `~/.email/config.json` - used by default across all directories.
-
-```bash
-# Interactive global configuration (default)
-mailos configure
-
-# With command-line arguments
-mailos configure --email user@gmail.com --provider gmail
-mailos configure --email user@outlook.com --provider outlook --name "John Doe"
-mailos configure --ai claude-code  # Set AI CLI provider
-```
-
-### Local Configuration
-Stored in `.email/config.json` in your project directory - overrides global configuration when present.
-
-```bash
-# Interactive local configuration
-mailos configure --local
-
-# With command-line arguments
-mailos configure --local --email user@gmail.com --provider gmail
-mailos configure --local --email user@outlook.com --provider outlook --name "John Doe"
-mailos configure --local --ai claude-code  # Set AI CLI provider for this project
-```
-
-**Available Providers:** gmail, outlook, yahoo, icloud, proton, fastmail, custom
-**AI CLI Options:** claude-code, claude-code-yolo, openai, gemini, opencode, none
-
-### Configuration Structure
+MailOS stores configuration in `~/.email/config.json`:
 
 ```json
 {
   "provider": "gmail",
-  "email": "your@email.com",
-  "password": "your-app-password",
-  "smtp_host": "smtp.gmail.com",
-  "smtp_port": 587,
-  "smtp_use_tls": true,
-  "imap_host": "imap.gmail.com",
-  "imap_port": 993,
+  "email": "your-email@gmail.com",
   "from_name": "Your Name",
+  "license_key": "your-license-key",
   "default_ai_cli": "claude-code"
 }
 ```
 
-## Markdown Support
+### Supported Email Providers
 
-All email bodies are treated as Markdown and automatically converted to HTML:
+- **Gmail** - Full support with app passwords
+- **Fastmail** - Native IMAP/SMTP support
+- **Outlook/Hotmail** - Microsoft account integration
+- **Yahoo Mail** - App password support
+- **Zoho Mail** - Full IMAP/SMTP support
+- **Custom IMAP/SMTP** - Any compatible provider
 
-- **Bold text**: `**bold**`
-- *Italic text*: `*italic*`
-- Headers: `# H1`, `## H2`, `### H3`
-- Links: `[text](https://example.com)`
-- Lists: `- item` or `* item`
-- Code blocks: ` ```code``` `
+## 🤝 AI Providers
 
-## Security
+MailOS integrates with popular AI tools:
 
-- Credentials are stored with restricted file permissions (600)
-- App-specific passwords are recommended for all providers
-- Never share or commit your `.email` directory
-- Local configurations (`.email/`) override global (`~/.email/`)
-- Add `.email/` to your `.gitignore` when using local configuration
+- Claude (via Claude Code CLI)
+- GPT-4 (via OpenAI CLI)
+- Gemini (via Google CLI)
+- Custom AI integrations
 
-## Supported Providers
+## 📄 License
 
-| Provider | SMTP Server | IMAP Server | Notes |
-|----------|------------|-------------|--------|
-| Gmail | smtp.gmail.com:587 | imap.gmail.com:993 | Requires app password |
-| Fastmail | smtp.fastmail.com:465 | imap.fastmail.com:993 | Use device password |
-| Zoho | smtp.zoho.com:465 | imap.zoho.com:993 | Generate app password |
-| Outlook | smtp-mail.outlook.com:587 | outlook.office365.com:993 | Enable 2FA first |
-| Yahoo | smtp.mail.yahoo.com:587 | imap.mail.yahoo.com:993 | Create app password |
+MailOS is proprietary software. A valid license is required for use.
 
-## Command Reference
+- **Purchase License**: https://email-os.com/checkout
+- **License Validation**: Automatic with internet connection
+- **Offline Grace Period**: 7 days for offline usage
 
-This section documents all available emailos commands for automated usage:
+## 🆘 Getting Help
 
-### Send Email
+### Resources
+- **Website**: https://email-os.com
+- **Documentation**: [docs/](docs/)
+- **Issues**: [GitHub Issues](https://github.com/corp-os/emailos/issues)
+
+### Common Issues
+
+**License Validation Failed**
+- Ensure you have an active internet connection
+- Verify your license at https://email-os.com
+- Run `mailos setup` to re-enter your license key
+
+**Email Provider Connection Issues**
+- Enable IMAP/SMTP in your email settings
+- Generate an app-specific password
+- Check firewall/antivirus settings
+
+**Command Not Found**
+- Ensure mailos is in your PATH
+- Try reinstalling with `npm install -g mailos`
+- See [installation troubleshooting](docs/installation.md#troubleshooting)
+
+## 🚀 Development
+
+### Prerequisites
+- Go 1.23+
+- Node.js 18+ (for npm package)
+- Git
+
+### Building
 ```bash
-mailos send -t <recipient> -s <subject> -m <message> [-c <cc>] [-b <bcc>] [-f <file>]
+# Clone repository
+git clone https://github.com/corp-os/emailos.git
+cd emailos
+
+# Build binary
+go build -o mailos .
+
+# Run tests
+go test ./...
+
+# Build for all platforms
+task release
 ```
 
-### Read Emails
-```bash
-mailos read [--unread] [--from <sender>] [--days <n>] [--range <time-range>] [-n <limit>]
-```
+### Contributing
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### Generate Report
-```bash
-mailos report [--range <time-range>] [--output <file>]
-```
+## 📊 Stats
 
-### Mark as Read
-```bash
-mailos mark-read --ids <comma-separated-ids>
-```
+- **Latest Version**: 0.1.6
+- **Downloads**: Available on [npm](https://www.npmjs.com/package/mailos)
+- **Stars**: [![GitHub stars](https://img.shields.io/github/stars/corp-os/emailos.svg)](https://github.com/corp-os/emailos/stargazers)
+- **License**: [Proprietary](https://email-os.com)
 
-### Setup
-```bash
-mailos setup           # Initial setup wizard (creates global config)
-mailos configure       # Modify global configuration
-mailos configure --local  # Create/modify local project configuration
-```
+## 🎉 What's New
 
-### Show Info
-```bash
-mailos info  # Display current configuration (shows local or global)
-```
+### Version 0.1.6
+- ✅ Multi-platform support (macOS, Linux, Windows)
+- ✅ npm package distribution
+- ✅ AI integration with multiple providers
+- ✅ Interactive TUI mode
+- ✅ Markdown email support
+- ✅ License validation system
 
-## License
+### Coming Soon
+- 📱 Mobile companion app
+- 🔄 Email synchronization
+- 📊 Analytics dashboard
+- 🎨 Custom themes
+- 🔌 Plugin system
 
-MIT License
+---
 
-## Contributing
+Made with ❤️ by the [EmailOS Team](https://email-os.com)
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+© 2024 EmailOS. All rights reserved.
