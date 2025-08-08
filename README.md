@@ -61,11 +61,84 @@ mailos send user@example.com "Meeting Tomorrow" "Let's discuss the project at 3p
 # Read recent emails
 mailos read --limit 10
 
-# Interactive mode
+# Interactive mode (classic UI)
 mailos interactive
+
+# Interactive mode with React Ink UI
+mailos interactive --ink
+mailos chat  # Always uses React Ink UI
 
 # AI-powered email (requires AI setup)
 mailos "send an email to john@example.com thanking him for the meeting"
+
+# Query emails with natural language
+mailos q="unread emails from last week"
+mailos "emails with attachments"
+
+# Generate email statistics with visual charts
+mailos stats --days 30
+mailos stats --range "last week"
+
+# Advanced search options
+mailos read --from john@example.com --unread --days 7
+mailos read --subject "invoice" --limit 20
+mailos read --json  # Output in JSON format
+```
+
+## 📘 Command Reference
+
+```bash
+# Core Commands
+mailos send <email> <subject> <body>     # Send email
+mailos send --file body.txt              # Send with body from file
+mailos send --plain                      # Send as plain text only
+mailos read [--limit N] [--unread]       # Read emails
+mailos read --json                       # Output as JSON
+mailos interactive                       # Interactive TUI mode
+mailos interactive --ink                 # React Ink UI mode
+mailos chat                               # AI chat interface
+mailos setup                              # Configuration wizard
+mailos local                              # Create local config for current directory
+mailos configure [--local]                # Manage configuration
+mailos provider                           # Configure AI provider
+mailos open [--from email] [--last N]    # Open emails in mail client
+
+# Draft Management
+mailos drafts --interactive              # Create drafts interactively
+mailos drafts --ai "query" --count N     # Generate drafts with AI
+mailos send --drafts                      # Send all draft emails
+mailos send --drafts --dry-run           # Preview drafts before sending
+mailos send --drafts --filter="priority:high"  # Send filtered drafts
+
+# Query & Search
+mailos q="<natural language query>"      # AI-powered search
+mailos "<query>"                          # Alternative query syntax
+mailos stats [--days N] [--range "week"]  # Email statistics with charts
+
+# Advanced Query Filters
+--sent=true/false         # Filter sent vs received
+--attachments=true/false  # Filter by attachments
+--min-size=5KB           # Minimum email size
+--max-size=10MB          # Maximum email size
+--domains=gmail.com      # Filter by domains
+--keywords=meeting       # Search keywords
+--group-by=sender        # Group results
+--format=json            # Output format
+
+# Standard Filters (for read, delete, mark-read)
+--from <email>    --to <email>    --subject <text>
+--unread          --days <N>       --limit <N>
+--range <range>   # e.g., "yesterday", "last week", "this month"
+
+# Batch Operations  
+mailos mark-read [filters]               # Mark as read
+mailos delete [filters]                   # Delete emails
+mailos export --format md --output dir    # Export emails
+mailos unsubscribe [--auto-open]         # Find unsubscribe links
+
+# Templates
+mailos template [create|edit|list|delete] # Manage templates
+# Templates support {{BODY}} and {{PROFILE_IMAGE}} placeholders
 ```
 
 ## 📖 Documentation
@@ -75,6 +148,27 @@ mailos "send an email to john@example.com thanking him for the meeting"
 - [Usage Guide](docs/usage.md) - Complete command reference
 - [AI Integration](docs/ai-integration.md) - Setting up AI features
 - [License Integration](docs/LICENSE_INTEGRATION.md) - License system details
+
+## ⌨️ Interactive Mode Keyboard Shortcuts
+
+- **Enter** - Submit query or select option
+- **ESC ESC** - Clear current input (press ESC twice quickly)
+- **/** - Show command menu
+- **↑↓** - Navigate menu options
+- **Ctrl+C** - Cancel/Go back
+- **Ctrl+D** - Exit (when input is empty)
+- **Backspace** - Delete character
+- **Tab** - Auto-complete (where available)
+
+### Slash Commands in Interactive Mode
+
+Type `/` to see available commands or use directly:
+- `/read` - Browse and read emails
+- `/send` - Compose new email
+- `/stats` - View email statistics
+- `/template` - Manage templates
+- `/provider` - Configure AI provider
+- `/exit` - Exit the application
 
 ## 🎯 Use Cases
 
@@ -122,7 +216,10 @@ go build -o mailos .
 
 ## 🔧 Configuration
 
-MailOS stores configuration in `~/.email/config.json`:
+MailOS supports both global and local configurations:
+
+### Global Configuration
+Stored in `~/.email/config.json` - applies to all projects:
 
 ```json
 {
@@ -132,6 +229,55 @@ MailOS stores configuration in `~/.email/config.json`:
   "license_key": "your-license-key",
   "default_ai_cli": "claude-code"
 }
+```
+
+### Local Configuration
+Create project-specific settings with the `local` command:
+
+```bash
+# Create local config in current directory
+mailos local
+
+# Or use configure with --local flag
+mailos configure --local
+```
+
+Local configuration (`.email/config.json`) inherits from global settings but allows you to override:
+- From email address (different sender for this project)
+- Display name (project-specific name)
+- AI CLI provider (different AI for this project)
+
+### Quick Configuration Updates
+Update configuration settings directly via command-line flags:
+
+```bash
+# Update display name
+mailos configure --name "John Doe"
+
+# Update from email
+mailos configure --from "john@example.com"
+
+# Update AI provider
+mailos configure --ai "claude-code"
+
+# Update local configuration
+mailos configure --local --name "Project Bot"
+mailos configure --local --ai "claude-code-yolo"
+```
+
+**How it works:**
+1. MailOS first checks for `.email/config.json` in the current directory
+2. If found, it loads the global config and applies local overrides
+3. Credentials (email/password) are always inherited from global for security
+4. Local configs are automatically added to `.gitignore`
+
+**Example use case:**
+```bash
+# Global config: personal@gmail.com
+cd ~/work/project
+mailos local
+# Set from_email to work@company.com for this project
+# Now emails sent from this directory appear from work@company.com
 ```
 
 ### Supported Email Providers
@@ -212,27 +358,14 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## 📊 Stats
 
-- **Latest Version**: 0.1.6
+- **Latest Version**: 0.1.8 (dev version with unreleased features)
 - **Downloads**: Available on [npm](https://www.npmjs.com/package/mailos)
 - **Stars**: [![GitHub stars](https://img.shields.io/github/stars/corp-os/emailos.svg)](https://github.com/corp-os/emailos/stargazers)
 - **License**: [Proprietary](https://email-os.com)
 
-## 🎉 What's New
+## 📄 Changelog
 
-### Version 0.1.6
-- ✅ Multi-platform support (macOS, Linux, Windows)
-- ✅ npm package distribution
-- ✅ AI integration with multiple providers
-- ✅ Interactive TUI mode
-- ✅ Markdown email support
-- ✅ License validation system
-
-### Coming Soon
-- 📱 Mobile companion app
-- 🔄 Email synchronization
-- 📊 Analytics dashboard
-- 🎨 Custom themes
-- 🔌 Plugin system
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history and updates.
 
 ---
 

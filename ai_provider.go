@@ -164,8 +164,25 @@ mailos info  # Display current email configuration
 ### Setup/Reconfigure
 ` + "```bash" + `
 mailos setup      # Run interactive configuration wizard
-mailos configure  # Manage existing configuration
+mailos configure  # Manage existing configuration (interactive menu)
+
+# Direct configuration updates (non-interactive):
+mailos configure --name "New Display Name"     # Update display name
+mailos configure --from "newemail@example.com" # Update from email
+mailos configure --ai "claude-code"            # Update AI provider
+mailos configure --local                       # Create/modify local config
+
+# Examples:
+mailos configure --name "John Doe"             # Change display name to John Doe
+mailos configure --local --name "Project Bot"  # Set local display name
 ` + "```" + `
+
+### Important Notes for Configuration Changes:
+- When the user asks to change their name, use: ` + "`mailos configure --name \"Their Name\"`" + `
+- When the user asks to change display name locally, use: ` + "`mailos configure --local --name \"Their Name\"`" + `
+- The configure command accepts flags: --name, --from, --email, --provider, --ai
+- Use --local flag to modify project-specific configuration (.email/)
+- Without --local flag, it modifies global configuration (~/.email/)
 
 ## Email Body Formatting
 

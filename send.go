@@ -6,6 +6,9 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+	
+	"github.com/emersion/go-imap"
+	"github.com/emersion/go-imap/client"
 )
 
 type EmailMessage struct {
@@ -59,8 +62,10 @@ func Send(msg *EmailMessage) error {
 		}
 	}
 	
-	// Apply template if it exists
-	if TemplateExists() && bodyHTML != "" {
+	// Apply template with profile image if it exists
+	if config.ProfileImage != "" || TemplateExists() {
+		bodyHTML = ApplyTemplateWithProfile(body, bodyHTML, config.ProfileImage)
+	} else if TemplateExists() && bodyHTML != "" {
 		bodyHTML = ApplyTemplate(body, bodyHTML)
 	}
 
@@ -115,7 +120,7 @@ func Send(msg *EmailMessage) error {
 
 	if useTLS {
 		// Use STARTTLS
-		return sendWithSTARTTLS(
+		err = sendWithSTARTTLS(
 			smtpHost,
 			smtpPort,
 			auth,
@@ -123,9 +128,14 @@ func Send(msg *EmailMessage) error {
 			allRecipients,
 			message.String(),
 		)
+		if err != nil {
+			return err
+		}
+		// After successfully sending, save to Sent folder
+		return saveToSentFolder(message.String(), config)
 	} else if useSSL {
 		// Use SMTPS (SMTP over SSL)
-		return sendWithSMTPS(
+		err = sendWithSMTPS(
 			smtpHost,
 			smtpPort,
 			auth,
@@ -133,11 +143,89 @@ func Send(msg *EmailMessage) error {
 			allRecipients,
 			message.String(),
 		)
+		if err != nil {
+			return err
+		}
+		// After successfully sending, save to Sent folder
+		return saveToSentFolder(message.String(), config)
 	}
 
 	// Plain SMTP (not recommended)
 	addr := fmt.Sprintf("%s:%d", smtpHost, smtpPort)
-	return smtp.SendMail(addr, auth, config.Email, allRecipients, []byte(message.String()))
+	err = smtp.SendMail(addr, auth, config.Email, allRecipients, []byte(message.String()))
+	if err != nil {
+		return err
+	}
+	
+	// After successfully sending, save to Sent folder
+	return saveToSentFolder(message.String(), config)
+}
+
+// saveToSentFolder saves the sent email to the IMAP Sent folder
+func saveToSentFolder(messageContent string, config *Config) error {
+	// Get IMAP settings from provider
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		// If we can't get IMAP settings, just log and continue (email was sent)
+		fmt.Println("Note: Could not save to Sent folder (IMAP not configured)")
+		return nil
+	}
+
+	// Connect to IMAP server
+	var c *client.Client
+	if imapPort == 993 {
+		// Use TLS
+		tlsConfig := &tls.Config{ServerName: imapHost}
+		c, err = client.DialTLS(fmt.Sprintf("%s:%d", imapHost, imapPort), tlsConfig)
+	} else {
+		// Use plain connection
+		c, err = client.Dial(fmt.Sprintf("%s:%d", imapHost, imapPort))
+	}
+	if err != nil {
+		fmt.Printf("Note: Could not save to Sent folder (connection failed: %v)\n", err)
+		return nil
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		fmt.Printf("Note: Could not save to Sent folder (login failed: %v)\n", err)
+		return nil
+	}
+
+	// Try common sent folder names
+	sentFolderNames := []string{"Sent", "Sent Items", "Sent Messages", "[Gmail]/Sent Mail", "INBOX.Sent"}
+	var selectedFolder string
+	
+	for _, folderName := range sentFolderNames {
+		// Try to select the folder
+		_, err := c.Select(folderName, false)
+		if err == nil {
+			selectedFolder = folderName
+			c.Close() // Close the selected folder
+			break
+		}
+	}
+	
+	if selectedFolder == "" {
+		fmt.Println("Note: Could not find Sent folder to save message")
+		return nil
+	}
+
+	// Append the message to the Sent folder
+	// IMAP requires CRLF line endings
+	messageWithCRLF := strings.ReplaceAll(messageContent, "\r\n", "\n")
+	messageWithCRLF = strings.ReplaceAll(messageWithCRLF, "\n", "\r\n")
+	
+	flags := []string{imap.SeenFlag}
+	date := time.Now()
+	err = c.Append(selectedFolder, flags, date, strings.NewReader(messageWithCRLF))
+	if err != nil {
+		fmt.Printf("Note: Could not save to Sent folder (append failed: %v)\n", err)
+		return nil
+	}
+
+	return nil
 }
 
 func sendWithSTARTTLS(host string, port int, auth smtp.Auth, from string, to []string, msg string) error {

@@ -804,6 +804,12 @@ func saveSlashConfig(config *SlashConfig) error {
 		return err
 	}
 	
+	// Ensure .email is in .gitignore
+	if err := EnsureGitIgnore(); err != nil {
+		// Don't fail the operation, just warn
+		fmt.Printf("Note: Could not update .gitignore: %v\n", err)
+	}
+	
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err

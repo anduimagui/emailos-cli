@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -199,6 +200,30 @@ func Setup() error {
 	}
 	fromName = strings.TrimSpace(fromName)
 
+	// Get profile image path (optional)
+	fmt.Print(promptStyle.Render("\nEnter path to your profile image (optional, press Enter to skip): "))
+	profileImagePath, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read profile image path: %v", err)
+	}
+	profileImagePath = strings.TrimSpace(profileImagePath)
+	
+	// Validate profile image if provided
+	if profileImagePath != "" {
+		// Check if file exists
+		if _, err := os.Stat(profileImagePath); os.IsNotExist(err) {
+			fmt.Println(errorStyle.Render("✗ Profile image file not found. Skipping..."))
+			profileImagePath = ""
+		} else {
+			// Convert to absolute path
+			absPath, err := filepath.Abs(profileImagePath)
+			if err == nil {
+				profileImagePath = absPath
+				fmt.Printf("%s %s\n", successStyle.Render("✓ Profile image found:"), profileImagePath)
+			}
+		}
+	}
+
 	// Select AI CLI provider
 	fmt.Println("\n" + headerStyle.Render("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
 	fmt.Println(headerStyle.Render("AI CLI CONFIGURATION"))
@@ -305,6 +330,7 @@ func Setup() error {
 		Email:        email,
 		Password:     password,
 		FromName:     fromName,
+		ProfileImage: profileImagePath,
 		LicenseKey:   licenseKey,
 		DefaultAICLI: defaultAICLI,
 	}

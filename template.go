@@ -2,6 +2,7 @@ package mailos
 
 import (
 	"bufio"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,6 +25,7 @@ func ManageTemplate() error {
 	fmt.Println("• Design a custom HTML email template")
 	fmt.Println("• Preview your design in real-time")
 	fmt.Println("• Use {{BODY}} placeholder for email content")
+	fmt.Println("• Use {{PROFILE_IMAGE}} placeholder for profile image")
 	fmt.Println("• Add your branding, colors, and styling")
 	fmt.Println()
 	
@@ -56,8 +58,9 @@ func ManageTemplate() error {
 	fmt.Println()
 	fmt.Println("1. Design your template in the browser editor")
 	fmt.Println("2. Use {{BODY}} where email content should appear")
-	fmt.Println("3. Copy the HTML code when you're satisfied")
-	fmt.Println("4. Come back here and paste it")
+	fmt.Println("3. Use {{PROFILE_IMAGE}} where profile image should appear (optional)")
+	fmt.Println("4. Copy the HTML code when you're satisfied")
+	fmt.Println("5. Come back here and paste it")
 	fmt.Println()
 	fmt.Println("The {{BODY}} placeholder will be replaced with your")
 	fmt.Println("email content (converted from Markdown to HTML).")
@@ -174,6 +177,11 @@ func SaveTemplate(template string) error {
 	if _, err := os.Stat(".email"); err == nil {
 		// Save to local .email
 		templatePath = filepath.Join(".email", "template.html")
+		// Ensure .email is in .gitignore
+		if err := EnsureGitIgnore(); err != nil {
+			// Don't fail the operation, just warn
+			fmt.Printf("Note: Could not update .gitignore: %v\n", err)
+		}
 	} else {
 		// Save to global ~/.email
 		homeDir, err := os.UserHomeDir()
@@ -227,6 +235,76 @@ func ApplyTemplate(body string, bodyHTML string) string {
 	result := strings.ReplaceAll(template, "{{BODY}}", content)
 	
 	return result
+}
+
+// ApplyTemplateWithProfile applies the template to the email body including profile image
+func ApplyTemplateWithProfile(body string, bodyHTML string, profileImagePath string) string {
+	// Try to load template
+	template, err := LoadTemplate()
+	if err != nil || template == "" {
+		// If no template, create a simple default with profile image if provided
+		if profileImagePath != "" && bodyHTML != "" {
+			imageTag := getProfileImageTag(profileImagePath)
+			if imageTag != "" {
+				// Add profile image at the top of the email
+				return imageTag + "<br><br>" + bodyHTML
+			}
+		}
+		return bodyHTML
+	}
+	
+	// Use HTML body if available, otherwise use plain body
+	content := bodyHTML
+	if content == "" {
+		content = strings.ReplaceAll(body, "\n", "<br>")
+	}
+	
+	// Replace {{BODY}} placeholder with content
+	result := strings.ReplaceAll(template, "{{BODY}}", content)
+	
+	// Replace {{PROFILE_IMAGE}} placeholder if profile image is provided
+	if profileImagePath != "" {
+		imageTag := getProfileImageTag(profileImagePath)
+		result = strings.ReplaceAll(result, "{{PROFILE_IMAGE}}", imageTag)
+	} else {
+		// Remove profile image placeholder if no image provided
+		result = strings.ReplaceAll(result, "{{PROFILE_IMAGE}}", "")
+	}
+	
+	return result
+}
+
+// getProfileImageTag creates an HTML img tag with base64 encoded image
+func getProfileImageTag(imagePath string) string {
+	// Read the image file
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		return ""
+	}
+	
+	// Detect image type from file extension
+	ext := strings.ToLower(filepath.Ext(imagePath))
+	var mimeType string
+	switch ext {
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpeg"
+	case ".png":
+		mimeType = "image/png"
+	case ".gif":
+		mimeType = "image/gif"
+	case ".webp":
+		mimeType = "image/webp"
+	default:
+		// Default to jpeg if unknown
+		mimeType = "image/jpeg"
+	}
+	
+	// Encode to base64
+	encoded := base64.StdEncoding.EncodeToString(imageData)
+	
+	// Create img tag with embedded base64 data
+	// Using a reasonable max width for email display
+	return fmt.Sprintf(`<img src="data:%s;base64,%s" alt="Profile" style="max-width: 150px; height: auto; border-radius: 50%%;">`, mimeType, encoded)
 }
 
 // TemplateExists checks if a template file exists

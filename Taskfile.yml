@@ -150,6 +150,12 @@ tasks:
       - |
         echo "Current version: v$(cd npm && node -p "require('./package.json').version")"
 
+  readme:
+    desc: Copy README.md to web folder for documentation access
+    cmds:
+      - cp README.md web/
+      - echo "✓ README.md copied to web folder"
+
   default:
     desc: Show available tasks
     cmds:

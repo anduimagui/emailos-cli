@@ -1,3 +1,7 @@
+// config.go - Core configuration data structures and file operations
+// This file handles the backend logic for loading, saving, and managing
+// email configurations (both global and local).
+
 package mailos
 
 import (
@@ -5,18 +9,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var APP_SITE = "email-os.com"
 
 type Config struct {
-	Provider     string `json:"provider"`
-	Email        string `json:"email"`
-	Password     string `json:"password"`
-	FromName     string `json:"from_name,omitempty"`
-	FromEmail    string `json:"from_email,omitempty"`
-	LicenseKey   string `json:"license_key,omitempty"`
-	DefaultAICLI string `json:"default_ai_cli,omitempty"`
+	Provider      string `json:"provider"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
+	FromName      string `json:"from_name,omitempty"`
+	FromEmail     string `json:"from_email,omitempty"`
+	ProfileImage  string `json:"profile_image,omitempty"`
+	LicenseKey    string `json:"license_key,omitempty"`
+	DefaultAICLI  string `json:"default_ai_cli,omitempty"`
 }
 
 // LegacyConfig represents the old config format
@@ -100,6 +106,9 @@ func LoadConfigWithInheritance() (*Config, error) {
 				if localOverrides.FromName != "" {
 					localConfig.FromName = localOverrides.FromName
 				}
+				if localOverrides.ProfileImage != "" {
+					localConfig.ProfileImage = localOverrides.ProfileImage
+				}
 				if localOverrides.DefaultAICLI != "" {
 					localConfig.DefaultAICLI = localOverrides.DefaultAICLI
 				}
@@ -179,6 +188,52 @@ func ConfigExists() bool {
 	return err == nil
 }
 
+// EnsureGitIgnore ensures that .email is added to .gitignore in the current directory
+func EnsureGitIgnore() error {
+	gitignorePath := ".gitignore"
+	
+	// Check if .gitignore exists
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		// .gitignore doesn't exist, create it with .email entry
+		return os.WriteFile(gitignorePath, []byte(".email/\n"), 0644)
+	}
+	
+	// Check if .email is already in .gitignore
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == ".email" || trimmed == ".email/" || trimmed == "/.email" || trimmed == "/.email/" {
+			// Already in .gitignore
+			return nil
+		}
+	}
+	
+	// Add .email to .gitignore
+	file, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	
+	// Add newline if file doesn't end with one
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		if _, err := file.WriteString("\n"); err != nil {
+			return err
+		}
+	}
+	
+	// Add .email entry
+	if _, err := file.WriteString(".email/\n"); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
 // LoadConfigFromPath loads config from a specific path
 func LoadConfigFromPath(configPath string) (*Config, error) {
 	return loadConfigFromPath(configPath)
@@ -190,6 +245,14 @@ func SaveConfigToPath(config *Config, configPath string) error {
 	configDir := filepath.Dir(configPath)
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return err
+	}
+	
+	// If creating a local .email folder, add it to .gitignore
+	if strings.HasPrefix(configPath, ".email/") || strings.HasPrefix(configPath, "./.email/") {
+		if err := EnsureGitIgnore(); err != nil {
+			// Don't fail the operation, just warn
+			fmt.Printf("Note: Could not update .gitignore: %v\n", err)
+		}
 	}
 
 	// Marshal config with indentation

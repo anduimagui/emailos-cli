@@ -1,0 +1,7 @@
+{
+  "email": "andrew@raggle.co",
+  "from_email": "andrew@happysoft.dev",
+  "from_name": "Andrew from HappySoft",
+  "provider": "gmail",
+  "default_ai_cli": "claude-code-yolo"
+}

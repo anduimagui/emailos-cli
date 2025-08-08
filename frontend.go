@@ -1,3 +1,7 @@
+// frontend.go - User interface and configuration setup functions
+// This file contains all the interactive configuration UI logic,
+// including menus, prompts, and setup wizards.
+
 package mailos
 
 import (
@@ -9,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/manifoldco/promptui"
 	"golang.org/x/term"
 )
@@ -42,6 +47,48 @@ func configureLocal(opts ConfigureOptions) error {
 	// Check if local .email already exists
 	localConfigPath := filepath.Join(".email", "config.json")
 	localConfig, _ := LoadConfigFromPath(localConfigPath)
+	
+	// Check if we have command-line options to apply directly
+	if localConfig != nil && (opts.Name != "" || opts.From != "" || opts.AICLI != "" || opts.Provider != "") {
+		// Apply command-line options directly to existing config
+		if opts.Name != "" {
+			localConfig.FromName = opts.Name
+			fmt.Printf("✓ Updated display name to: %s\n", opts.Name)
+		}
+		if opts.From != "" {
+			localConfig.FromEmail = opts.From
+			fmt.Printf("✓ Updated from email to: %s\n", opts.From)
+		}
+		if opts.AICLI != "" {
+			// Map command-line AI option to internal key
+			aiMap := map[string]string{
+				"claude-code":      "claude-code",
+				"claude-code-yolo": "claude-code-yolo",
+				"claude":           "claude-code",
+				"claude-yolo":      "claude-code-yolo",
+				"openai":           "openai-codex",
+				"openai-codex":     "openai-codex",
+				"gemini":           "gemini-cli",
+				"gemini-cli":       "gemini-cli",
+				"opencode":         "opencode",
+				"none":             "none",
+			}
+			if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
+				localConfig.DefaultAICLI = key
+				fmt.Printf("✓ Updated AI CLI to: %s\n", GetAICLIName(key))
+			} else {
+				return fmt.Errorf("invalid AI CLI: %s", opts.AICLI)
+			}
+		}
+		if opts.Provider != "" {
+			// Note: changing provider requires re-entering credentials
+			fmt.Println("Changing email provider requires full reconfiguration.")
+			return setupConfigWithOptions(opts, true)
+		}
+		
+		// Save the updated local configuration
+		return saveLocalConfig(localConfig)
+	}
 	
 	if localConfig != nil && opts.Email == "" {
 		// Local config already exists and no command-line options provided
@@ -125,6 +172,48 @@ func configureGlobal(opts ConfigureOptions) error {
 	
 	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
 	globalConfig, _ := LoadConfigFromPath(globalConfigPath)
+	
+	// Check if we have command-line options to apply directly
+	if globalConfig != nil && (opts.Name != "" || opts.From != "" || opts.AICLI != "" || opts.Provider != "") {
+		// Apply command-line options directly to existing config
+		if opts.Name != "" {
+			globalConfig.FromName = opts.Name
+			fmt.Printf("✓ Updated display name to: %s\n", opts.Name)
+		}
+		if opts.From != "" {
+			globalConfig.FromEmail = opts.From
+			fmt.Printf("✓ Updated from email to: %s\n", opts.From)
+		}
+		if opts.AICLI != "" {
+			// Map command-line AI option to internal key
+			aiMap := map[string]string{
+				"claude-code":      "claude-code",
+				"claude-code-yolo": "claude-code-yolo",
+				"claude":           "claude-code",
+				"claude-yolo":      "claude-code-yolo",
+				"openai":           "openai-codex",
+				"openai-codex":     "openai-codex",
+				"gemini":           "gemini-cli",
+				"gemini-cli":       "gemini-cli",
+				"opencode":         "opencode",
+				"none":             "none",
+			}
+		if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
+				globalConfig.DefaultAICLI = key
+				fmt.Printf("✓ Updated AI CLI to: %s\n", GetAICLIName(key))
+			} else {
+				return fmt.Errorf("invalid AI CLI: %s", opts.AICLI)
+			}
+		}
+		if opts.Provider != "" {
+			// Note: changing provider requires re-entering credentials
+			fmt.Println("Changing email provider requires full reconfiguration.")
+			return setupConfigWithOptions(opts, false)
+		}
+		
+		// Save the updated global configuration
+		return SaveConfig(globalConfig)
+	}
 	
 	if globalConfig != nil && opts.Email == "" {
 		// Global config already exists and no command-line options provided
@@ -348,6 +437,65 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 		fmt.Printf("\nYou selected: %s\n", provider.Name)
 	}
 	
+	// Check if this is a local config setup and warn if different provider than global
+	if isLocal {
+		homeDir, _ := os.UserHomeDir()
+		globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+		if globalConfig, err := LoadConfigFromPath(globalConfigPath); err == nil && globalConfig != nil {
+			if globalConfig.Provider != "" && globalConfig.Provider != selectedKey {
+				// Define styles for the warning
+				warningStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("196")). // Red
+					Bold(true)
+				headerStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("226")). // Yellow
+					Bold(true).
+					Background(lipgloss.Color("196")). // Red background
+					Padding(0, 1)
+				infoStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("214")) // Orange
+				providerStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("39")). // Bright blue
+					Bold(true)
+				bulletStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("196")) // Red for bullets
+				
+				fmt.Println()
+				fmt.Println(headerStyle.Render(" ⚠️  WARNING: DIFFERENT PROVIDER SELECTED "))
+				fmt.Println(warningStyle.Render("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+				fmt.Println()
+				fmt.Printf("%s %s\n", 
+					infoStyle.Render("Your global configuration uses:"),
+					providerStyle.Render(GetProviderName(globalConfig.Provider)))
+				fmt.Printf("%s %s\n", 
+					infoStyle.Render("You selected for local config: "),
+					providerStyle.Render(provider.Name))
+				fmt.Println()
+				fmt.Println(warningStyle.Render("⚠️  This means you'll need to configure entirely separate"))
+				fmt.Println(warningStyle.Render("   credentials for this local folder, including:"))
+				fmt.Println()
+				fmt.Printf("   %s Email address\n", bulletStyle.Render("•"))
+				fmt.Printf("   %s App password\n", bulletStyle.Render("•"))
+				fmt.Printf("   %s SMTP/IMAP settings\n", bulletStyle.Render("•"))
+				fmt.Println()
+				fmt.Println(infoStyle.Render("The local configuration will be saved in:"))
+				fmt.Println(providerStyle.Render("  .email/config.json"))
+				fmt.Println()
+				
+				confirmPrompt := promptui.Select{
+					Label: warningStyle.Render("Do you want to continue with a different provider?"),
+					Items: []string{"Yes, use " + provider.Name, "No, go back to selection"},
+				}
+				
+				confirmIdx, _, err := confirmPrompt.Run()
+				if err != nil || confirmIdx == 1 {
+					return fmt.Errorf("configuration cancelled")
+				}
+				fmt.Println()
+			}
+		}
+	}
+	
 	// Handle email address
 	var email string
 	if opts.Email != "" {
@@ -563,34 +711,6 @@ func saveLocalConfig(config *Config) error {
 
 	// Save configuration
 	return SaveConfigToPath(config, configPath)
-}
-
-// GetProviderName returns the display name for a provider key
-func GetProviderName(key string) string {
-	if provider, exists := Providers[key]; exists {
-		return provider.Name
-	}
-	return key
-}
-
-// GetAICLIName returns the display name for an AI CLI key
-func GetAICLIName(key string) string {
-	switch key {
-	case "claude-code":
-		return "Claude Code"
-	case "claude-code-yolo":
-		return "Claude Code YOLO Mode"
-	case "openai-codex":
-		return "OpenAI Codex"
-	case "gemini-cli":
-		return "Gemini CLI"
-	case "opencode":
-		return "OpenCode"
-	case "none", "":
-		return "None (Manual only)"
-	default:
-		return key
-	}
 }
 
 // isValidEmail validates email format

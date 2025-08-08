@@ -11,8 +11,16 @@ import (
 
 // InteractiveModeWithMenu runs the enhanced interactive mode with logo and input-first design
 func InteractiveModeWithMenu() error {
-	// Display EmailOS logo and branding
-	displayEmailOSLogo()
+	return InteractiveModeWithMenuOptions(false, true)
+}
+
+// InteractiveModeWithMenuOptions runs the enhanced interactive mode with control over display
+func InteractiveModeWithMenuOptions(showLogo bool, showInitialStatus bool) error {
+	// Default to classic UI, unless --ink flag is used or MAILOS_USE_INK is set
+	useInkUI := os.Getenv("MAILOS_USE_INK") == "true"
+	if useInkUI {
+		return InteractiveModeWithReactInk()
+	}
 
 	// Check configuration
 	config, err := LoadConfig()
@@ -27,8 +35,21 @@ func InteractiveModeWithMenu() error {
 	needsProvider := (config.DefaultAICLI == "" || config.DefaultAICLI == "none") && !hasConfiguredProvider(slashConfig)
 	
 	// Main interactive loop
+	firstIteration := true
 	for {
-		if err := showEnhancedInteractiveMenu(needsProvider); err != nil {
+		// Show appropriate header on first iteration
+		if firstIteration {
+			if showLogo && ShouldShowLogo() {
+				DisplayEmailOSLogo()
+			} else if showInitialStatus {
+				// Show single-line header instead of full logo
+				DisplaySingleLineHeader(config)
+			}
+		}
+		
+		// Show status on subsequent iterations but not on first if we already showed header
+		shouldShowStatus := !firstIteration
+		if err := showEnhancedInteractiveMenuWithOptions(needsProvider, shouldShowStatus); err != nil {
 			if err.Error() == "exit" {
 				fmt.Println("\n👋 Goodbye!")
 				return nil
@@ -39,53 +60,29 @@ func InteractiveModeWithMenu() error {
 				needsProvider = (config.DefaultAICLI == "" || config.DefaultAICLI == "none")
 			}
 		}
+		firstIteration = false
 	}
 }
 
-// displayEmailOSLogo shows the EmailOS ASCII art logo
-func displayEmailOSLogo() {
-	// Check if license is already validated to avoid showing it again
-	lm := GetLicenseManager()
-	if lm != nil && lm.GetCachedLicense() != nil && lm.GetCachedLicense().Status == "valid" {
-		logo := `
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║   ███████╗███╗   ███╗ █████╗ ██╗██╗      ██████╗ ███████╗   ║
-║   ██╔════╝████╗ ████║██╔══██╗██║██║     ██╔═══██╗██╔════╝   ║
-║   █████╗  ██╔████╔██║███████║██║██║     ██║   ██║███████╗   ║
-║   ██╔══╝  ██║╚██╔╝██║██╔══██║██║██║     ██║   ██║╚════██║   ║
-║   ███████╗██║ ╚═╝ ██║██║  ██║██║███████╗╚██████╔╝███████║   ║
-║   ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝ ╚══════╝   ║
-║                                                               ║
-║            Your AI-Powered Email Management System            ║
-╚═══════════════════════════════════════════════════════════════╝
-`
-		fmt.Print("\033[36m" + logo + "\033[0m\n")
-	}
-	// If not licensed, the license check will show its own branding
-}
 
 // showEnhancedInteractiveMenu displays the input-first interactive menu
 func showEnhancedInteractiveMenu(needsProvider bool) error {
+	return showEnhancedInteractiveMenuWithOptions(needsProvider, true)
+}
+
+// showEnhancedInteractiveMenuWithOptions displays the input-first interactive menu with control over status display
+func showEnhancedInteractiveMenuWithOptions(needsProvider bool, showStatus bool) error {
 	// Show current status
 	config, _ := LoadConfig()
-	fmt.Printf("\n📬 Account: %s", config.Email)
-	if config.DefaultAICLI != "" && config.DefaultAICLI != "none" {
-		fmt.Printf(" | 🤖 AI: %s", GetAICLIName(config.DefaultAICLI))
-	} else if needsProvider {
-		fmt.Printf(" | ⚠️  No AI provider (use /provider to setup)")
-	}
-	fmt.Println()
-
-	// Show input prompt with command hints
-	fmt.Println("💡 Enter a query for AI or type '/' to see commands")
-	fmt.Println("────────────────────────────────────────────────────────────────────────────")
 	
-	// Get user input
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("▸ ")
-	input, err := reader.ReadString('\n')
-	if err != nil {
+	if showStatus {
+		// Use the new DisplayStatusBox function from logo.go
+		DisplayStatusBox(config)
+	}
+	
+	// Get user input with full arrow key support
+	input := ReadLineWithArrows("▸ ")
+	if input == "__EXIT__" {
 		return fmt.Errorf("exit")
 	}
 	
@@ -279,9 +276,12 @@ AI QUERIES:
 
 KEYBOARD SHORTCUTS:
   • Enter      - Submit query or select option
+  • ESC ESC     - Clear current input (press ESC twice quickly)
   • /          - Show command menu
   • ↑↓         - Navigate menu options
   • Ctrl+C     - Cancel/Go back
+  • Ctrl+D     - Exit (when input is empty)
+  • Backspace  - Delete character
   • Tab        - Auto-complete (where available)
 
 TIPS:
@@ -300,3 +300,10 @@ TIPS:
 	
 	return nil
 }
+
+// GetInputWithEscapeClear is deprecated - use ReadLineWithArrows instead
+// Kept for backward compatibility
+func GetInputWithEscapeClear() string {
+	return ReadLineWithArrows("▸ ")
+}
+

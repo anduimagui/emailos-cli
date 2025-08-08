@@ -27,6 +27,7 @@ type ReadOptions struct {
 	Limit       int
 	UnreadOnly  bool
 	FromAddress string
+	ToAddress   string
 	Subject     string
 	Since       time.Time
 }
@@ -76,6 +77,14 @@ func Read(opts ReadOptions) ([]*Email, error) {
 	}
 	if opts.FromAddress != "" {
 		criteria.Header.Add("From", opts.FromAddress)
+	}
+	// Use config.FromEmail if no ToAddress is explicitly specified
+	toAddress := opts.ToAddress
+	if toAddress == "" && config.FromEmail != "" {
+		toAddress = config.FromEmail
+	}
+	if toAddress != "" {
+		criteria.Header.Add("To", toAddress)
 	}
 	if opts.Subject != "" {
 		criteria.Header.Add("Subject", opts.Subject)

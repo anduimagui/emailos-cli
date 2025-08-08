@@ -1,3 +1,7 @@
+// providers.go - Email provider configurations and utility functions
+// This file defines email provider settings (SMTP/IMAP) and provides
+// utility functions for provider and AI CLI name lookups.
+
 package mailos
 
 import (
@@ -99,4 +103,32 @@ func GetProviderKeys() []string {
 	// Combine preferred and other providers
 	allKeys := append(preferredOrder, otherProviders...)
 	return allKeys
+}
+
+// GetProviderName returns the display name for a provider key
+func GetProviderName(key string) string {
+	if provider, exists := Providers[key]; exists {
+		return provider.Name
+	}
+	return key
+}
+
+// GetAICLIName returns the display name for an AI CLI key
+func GetAICLIName(key string) string {
+	switch key {
+	case "claude-code":
+		return "Claude Code"
+	case "claude-code-yolo":
+		return "Claude Code YOLO Mode"
+	case "openai-codex":
+		return "OpenAI Codex"
+	case "gemini-cli":
+		return "Gemini CLI"
+	case "opencode":
+		return "OpenCode"
+	case "none", "":
+		return "None (Manual only)"
+	default:
+		return key
+	}
 }
