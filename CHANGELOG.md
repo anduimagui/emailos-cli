@@ -8,7 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Draft email management**: New `mailos drafts` command for creating and managing email drafts
+- **Dynamic AI Documentation**: New `mailos docs` command automatically generates EMAILOS.md from docs/ directory
+  - Reads all documentation files from docs/ folder
+  - Generates comprehensive AI instructions dynamically
+  - No more hardcoded documentation - always stays in sync with actual docs
+  - Automatically includes draft, send, read, and all other commands
+- **Enhanced Draft Management**: Complete draft system with dual storage (local + IMAP)
+  - `mailos draft` command for creating email drafts with full command-line argument support
+  - All email composition flags available: `--to`, `--cc`, `--bcc`, `--subject`, `--body`, `--attach`, etc.
+  - Drafts automatically saved to both local `draft-emails/` folder and IMAP Drafts folder
+  - Full synchronization with email provider ensures drafts are accessible from any email client
+  - Support for priority levels, custom signatures, and plain text mode
+- **Draft Reading from IMAP**: New flags to read drafts from email account
+  - `mailos draft --list` to list all drafts in IMAP Drafts folder
+  - `mailos draft --read` to read full content of drafts with body
+  - Automatic Drafts folder detection across providers (Gmail, Outlook, etc.)
+- **Draft command alias**: `mailos draft` as an alias for `mailos drafts` for convenience
+- **IMAP Draft synchronization**: Automatic upload to email provider's Drafts folder with proper Draft flag
 - **Batch email sending**: `mailos send --drafts` to send all prepared draft emails
 - **Draft filtering**: Send drafts selectively with `--filter` option (e.g., `priority:high`)
 - **Dry-run mode**: Preview drafts before sending with `--dry-run` flag
@@ -28,9 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plain text email sending with `--plain` flag
 
 ### Changed
+- **Streamlined UI**: Logo now only displays during setup; other commands show a compact single-line header
 - Interactive mode now supports raw terminal input for better keyboard handling
 - Statistics command displays visual activity charts by hour and weekday
 - Templates now support profile images and enhanced placeholders
+- Draft and send commands now share identical email composition flags for consistency
 
 ### Fixed
 - Terminal input handling for special key sequences

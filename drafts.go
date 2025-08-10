@@ -2,11 +2,17 @@ package mailos
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/tls"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+	
+	"github.com/emersion/go-imap"
+	"github.com/emersion/go-imap/client"
 )
 
 // DraftsOptions contains configuration for the drafts command
@@ -18,6 +24,19 @@ type DraftsOptions struct {
 	Interactive   bool
 	UseAI         bool
 	DraftCount    int
+	List          bool   // List drafts from IMAP
+	Read          bool   // Read drafts from IMAP
+	// Email composition fields
+	To            []string
+	CC            []string
+	BCC           []string
+	Subject       string
+	Body          string
+	Attachments   []string
+	Priority      string
+	PlainText     bool
+	NoSignature   bool
+	Signature     string
 }
 
 // DraftEmail represents an email draft with metadata
@@ -34,6 +53,11 @@ type DraftEmail struct {
 
 // DraftsCommand generates draft emails based on user input
 func DraftsCommand(opts DraftsOptions) error {
+	// Handle listing drafts from IMAP
+	if opts.List || opts.Read {
+		return listDraftsFromIMAP(opts.Read)
+	}
+
 	// Set default output directory
 	if opts.OutputDir == "" {
 		opts.OutputDir = "draft-emails"
@@ -67,28 +91,53 @@ func DraftsCommand(opts DraftsOptions) error {
 			return fmt.Errorf("failed to create drafts interactively: %v", err)
 		}
 	} else {
-		// Default: create a single draft interactively
-		draft, err := createSingleDraftInteractively()
-		if err != nil {
-			return fmt.Errorf("failed to create draft: %v", err)
+		// Check if we have command-line specified fields
+		if len(opts.To) > 0 || opts.Subject != "" || opts.Body != "" {
+			// Create draft from command-line arguments
+			draft := DraftEmail{
+				To:          opts.To,
+				CC:          opts.CC,
+				BCC:         opts.BCC,
+				Subject:     opts.Subject,
+				Body:        opts.Body,
+				Attachments: opts.Attachments,
+				Priority:    opts.Priority,
+			}
+			drafts = []DraftEmail{draft}
+		} else {
+			// Default: create a single draft interactively
+			draft, err := createSingleDraftInteractively()
+			if err != nil {
+				return fmt.Errorf("failed to create draft: %v", err)
+			}
+			drafts = []DraftEmail{draft}
 		}
-		drafts = []DraftEmail{draft}
 	}
 
-	// Save drafts to files
+	// Save drafts to both local files and IMAP Drafts folder
 	for i, draft := range drafts {
+		// Save to local file
 		filename := generateDraftFilename(draft.Subject, i+1)
 		filepath := filepath.Join(opts.OutputDir, filename)
 		
 		if err := saveDraftToFile(draft, filepath); err != nil {
-			return fmt.Errorf("failed to save draft %d: %v", i+1, err)
+			return fmt.Errorf("failed to save draft %d to file: %v", i+1, err)
 		}
 		
-		fmt.Printf("✓ Created draft: %s\n", filepath)
+		fmt.Printf("✓ Created local draft: %s\n", filepath)
+		
+		// Save to IMAP Drafts folder
+		if err := saveDraftToIMAP(draft); err != nil {
+			// Don't fail the whole operation if IMAP save fails
+			fmt.Printf("⚠️  Could not save draft to email account: %v\n", err)
+		} else {
+			fmt.Printf("✓ Saved draft to email account's Drafts folder\n")
+		}
 	}
 
 	fmt.Printf("\n📧 Created %d draft(s) in %s/\n", len(drafts), opts.OutputDir)
 	fmt.Printf("📤 To send all drafts, run: mailos send --drafts\n")
+	fmt.Printf("📮 Drafts are also saved in your email account's Drafts folder\n")
 	
 	return nil
 }
@@ -286,4 +335,368 @@ func saveDraftToFile(draft DraftEmail, filepath string) error {
 	file.WriteString(draft.Body)
 	
 	return nil
+}
+
+// saveDraftToIMAP saves a draft email to the IMAP Drafts folder
+func saveDraftToIMAP(draft DraftEmail) error {
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %v", err)
+	}
+
+	// Build the email message in RFC 822 format
+	var message bytes.Buffer
+	
+	// Use FromEmail if specified, otherwise use the account email
+	fromEmail := config.Email
+	if config.FromEmail != "" {
+		fromEmail = config.FromEmail
+	}
+	
+	from := fromEmail
+	if config.FromName != "" {
+		from = fmt.Sprintf("%s <%s>", config.FromName, fromEmail)
+	}
+
+	// Write headers
+	message.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	message.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(draft.To, ", ")))
+	if len(draft.CC) > 0 {
+		message.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(draft.CC, ", ")))
+	}
+	if len(draft.BCC) > 0 {
+		message.WriteString(fmt.Sprintf("Bcc: %s\r\n", strings.Join(draft.BCC, ", ")))
+	}
+	message.WriteString(fmt.Sprintf("Subject: %s\r\n", draft.Subject))
+	message.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+	
+	// Add a draft header to indicate this is a draft
+	message.WriteString("X-Draft: true\r\n")
+	if draft.Priority != "" && draft.Priority != "normal" {
+		message.WriteString(fmt.Sprintf("X-Priority: %s\r\n", draft.Priority))
+	}
+	
+	message.WriteString("MIME-Version: 1.0\r\n")
+	message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+	message.WriteString("\r\n")
+	message.WriteString(draft.Body)
+
+	// Connect to IMAP server
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get IMAP settings: %v", err)
+	}
+
+	addr := fmt.Sprintf("%s:%d", imapHost, imapPort)
+	
+	// Connect with TLS
+	tlsConfig := &tls.Config{ServerName: imapHost}
+	c, err := client.DialTLS(addr, tlsConfig)
+	if err != nil {
+		// Try without TLS
+		c, err = client.Dial(addr)
+		if err != nil {
+			return fmt.Errorf("failed to connect to IMAP server: %v", err)
+		}
+		
+		// Start TLS if not already encrypted
+		if ok, _ := c.SupportStartTLS(); ok {
+			if err := c.StartTLS(tlsConfig); err != nil {
+				return fmt.Errorf("failed to start TLS: %v", err)
+			}
+		}
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		return fmt.Errorf("failed to login: %v", err)
+	}
+
+	// Find the Drafts folder
+	// Common draft folder names
+	draftFolderNames := []string{"Drafts", "INBOX.Drafts", "[Gmail]/Drafts", "Draft", "INBOX.Draft"}
+	
+	// List all folders to find the drafts folder
+	mailboxes := make(chan *imap.MailboxInfo, 10)
+	done := make(chan error, 1)
+	go func() {
+		done <- c.List("", "*", mailboxes)
+	}()
+	
+	var selectedFolder string
+	availableFolders := []string{}
+	for m := range mailboxes {
+		availableFolders = append(availableFolders, m.Name)
+		// Check if this is a drafts folder
+		for _, draftName := range draftFolderNames {
+			if strings.EqualFold(m.Name, draftName) || strings.Contains(strings.ToLower(m.Name), "draft") {
+				selectedFolder = m.Name
+				break
+			}
+		}
+	}
+	
+	if err := <-done; err != nil {
+		return fmt.Errorf("failed to list folders: %v", err)
+	}
+	
+	// If no drafts folder found, try common names
+	if selectedFolder == "" {
+		for _, folderName := range draftFolderNames {
+			_, err := c.Select(folderName, false)
+			if err == nil {
+				selectedFolder = folderName
+				break
+			}
+		}
+	}
+	
+	// If still no folder, create one or use INBOX
+	if selectedFolder == "" {
+		// Try to create a Drafts folder
+		err := c.Create("Drafts")
+		if err == nil {
+			selectedFolder = "Drafts"
+		} else {
+			// Fall back to INBOX if we can't create Drafts
+			selectedFolder = "INBOX"
+		}
+	}
+
+	// Append the draft to the folder
+	flags := []string{imap.DraftFlag} // Mark as draft
+	date := time.Now()
+	
+	messageStr := message.String()
+	// Ensure CRLF line endings
+	messageWithCRLF := strings.ReplaceAll(messageStr, "\n", "\r\n")
+	messageWithCRLF = strings.ReplaceAll(messageWithCRLF, "\r\r\n", "\r\n")
+	
+	err = c.Append(selectedFolder, flags, date, strings.NewReader(messageWithCRLF))
+	if err != nil {
+		return fmt.Errorf("failed to save draft to %s folder: %v", selectedFolder, err)
+	}
+
+	return nil
+}
+
+// listDraftsFromIMAP lists or reads drafts from the IMAP Drafts folder
+func listDraftsFromIMAP(showFullContent bool) error {
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %v", err)
+	}
+
+	// Connect to IMAP server
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get IMAP settings: %v", err)
+	}
+
+	addr := fmt.Sprintf("%s:%d", imapHost, imapPort)
+	
+	// Connect with TLS
+	tlsConfig := &tls.Config{ServerName: imapHost}
+	c, err := client.DialTLS(addr, tlsConfig)
+	if err != nil {
+		// Try without TLS
+		c, err = client.Dial(addr)
+		if err != nil {
+			return fmt.Errorf("failed to connect to IMAP server: %v", err)
+		}
+		
+		// Start TLS if not already encrypted
+		if ok, _ := c.SupportStartTLS(); ok {
+			if err := c.StartTLS(tlsConfig); err != nil {
+				return fmt.Errorf("failed to start TLS: %v", err)
+			}
+		}
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		return fmt.Errorf("failed to login: %v", err)
+	}
+
+	// Find and select the Drafts folder
+	selectedFolder, err := findDraftsFolder(c)
+	if err != nil {
+		return fmt.Errorf("failed to find Drafts folder: %v", err)
+	}
+
+	// Select the drafts folder
+	mbox, err := c.Select(selectedFolder, false)
+	if err != nil {
+		return fmt.Errorf("failed to select drafts folder: %v", err)
+	}
+
+	fmt.Printf("📮 Reading drafts from %s folder\n", selectedFolder)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+
+	// If mailbox is empty
+	if mbox.Messages == 0 {
+		fmt.Println("No drafts found in your Drafts folder")
+		return nil
+	}
+
+	// Fetch all drafts
+	seqSet := new(imap.SeqSet)
+	seqSet.AddRange(1, mbox.Messages)
+
+	messages := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+	
+	section := &imap.BodySectionName{}
+	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, imap.FetchInternalDate}
+	if showFullContent {
+		items = append(items, section.FetchItem())
+	}
+
+	go func() {
+		done <- c.Fetch(seqSet, items, messages)
+	}()
+
+	count := 0
+	for msg := range messages {
+		count++
+		
+		// Display draft information
+		envelope := msg.Envelope
+		if envelope != nil {
+			fmt.Printf("\n📧 Draft #%d\n", count)
+			
+			// From
+			if len(envelope.From) > 0 {
+				from := envelope.From[0]
+				fmt.Printf("  From: %s <%s>\n", from.PersonalName, from.Address())
+			}
+			
+			// To
+			if len(envelope.To) > 0 {
+				toAddrs := []string{}
+				for _, addr := range envelope.To {
+					if addr.PersonalName != "" {
+						toAddrs = append(toAddrs, fmt.Sprintf("%s <%s>", addr.PersonalName, addr.Address()))
+					} else {
+						toAddrs = append(toAddrs, addr.Address())
+					}
+				}
+				fmt.Printf("  To: %s\n", strings.Join(toAddrs, ", "))
+			}
+			
+			// Subject
+			fmt.Printf("  Subject: %s\n", envelope.Subject)
+			
+			// Date
+			if !msg.InternalDate.IsZero() {
+				fmt.Printf("  Date: %s\n", msg.InternalDate.Format("Jan 2, 2006 at 3:04 PM"))
+			}
+			
+			// Flags
+			flagStrs := []string{}
+			for _, flag := range msg.Flags {
+				flagStrs = append(flagStrs, flag)
+			}
+			if len(flagStrs) > 0 {
+				fmt.Printf("  Flags: %s\n", strings.Join(flagStrs, ", "))
+			}
+			
+			// Show body if requested
+			if showFullContent {
+				body := msg.GetBody(section)
+				if body != nil {
+					bodyBytes, err := ioutil.ReadAll(body)
+					if err == nil && len(bodyBytes) > 0 {
+						bodyStr := string(bodyBytes)
+						// Extract just the text content
+						lines := strings.Split(bodyStr, "\n")
+						inBody := false
+						bodyContent := []string{}
+						for _, line := range lines {
+							if inBody {
+								bodyContent = append(bodyContent, line)
+							} else if line == "" {
+								inBody = true
+							}
+						}
+						if len(bodyContent) > 0 {
+							fmt.Println("\n  Body:")
+							fmt.Println("  ──────────────────────────────────────────")
+							bodyText := strings.Join(bodyContent, "\n")
+							// Indent body content
+							for _, line := range strings.Split(bodyText, "\n") {
+								if strings.TrimSpace(line) != "" {
+									fmt.Printf("  %s\n", line)
+								}
+							}
+							fmt.Println("  ──────────────────────────────────────────")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if err := <-done; err != nil {
+		return fmt.Errorf("failed to fetch drafts: %v", err)
+	}
+
+	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("Total: %d draft(s) in %s\n", count, selectedFolder)
+	
+	if !showFullContent {
+		fmt.Println("\nTip: Use 'mailos drafts --read' to see full draft content")
+	}
+
+	return nil
+}
+
+// findDraftsFolder locates the Drafts folder on the IMAP server
+func findDraftsFolder(c *client.Client) (string, error) {
+	// Common draft folder names
+	draftFolderNames := []string{"Drafts", "INBOX.Drafts", "[Gmail]/Drafts", "Draft", "INBOX.Draft"}
+	
+	// List all folders to find the drafts folder
+	mailboxes := make(chan *imap.MailboxInfo, 10)
+	done := make(chan error, 1)
+	go func() {
+		done <- c.List("", "*", mailboxes)
+	}()
+	
+	var selectedFolder string
+	for m := range mailboxes {
+		// Check if this is a drafts folder
+		for _, draftName := range draftFolderNames {
+			if strings.EqualFold(m.Name, draftName) || strings.Contains(strings.ToLower(m.Name), "draft") {
+				selectedFolder = m.Name
+				break
+			}
+		}
+		if selectedFolder != "" {
+			break
+		}
+	}
+	
+	if err := <-done; err != nil {
+		return "", fmt.Errorf("failed to list folders: %v", err)
+	}
+	
+	// If no drafts folder found, try common names
+	if selectedFolder == "" {
+		for _, folderName := range draftFolderNames {
+			_, err := c.Select(folderName, false)
+			if err == nil {
+				selectedFolder = folderName
+				break
+			}
+		}
+	}
+	
+	if selectedFolder == "" {
+		return "", fmt.Errorf("no Drafts folder found")
+	}
+	
+	return selectedFolder, nil
 }

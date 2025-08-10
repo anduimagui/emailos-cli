@@ -20,6 +20,9 @@ MailOS is a powerful command-line email client that brings AI automation to your
 - **Interactive Mode**: Browse and manage emails with a TUI interface
 - **Batch Operations**: Process multiple emails efficiently
 - **Template System**: Save and reuse email templates
+- **Draft Management**: Create, edit, and manage email drafts with full IMAP synchronization
+- **Dual Storage**: Drafts saved both locally (draft-emails/) and to your email provider's Drafts folder
+- **Draft Synchronization**: Automatic IMAP upload ensures drafts are accessible from any email client
 
 ### 🔒 Security
 - **App-Specific Passwords**: Never store your main password
@@ -58,6 +61,11 @@ The setup wizard will:
 # Send an email
 mailos send user@example.com "Meeting Tomorrow" "Let's discuss the project at 3pm"
 
+# Create and manage drafts (saved to email account)
+mailos draft                          # Create a draft interactively
+mailos draft -t user@example.com -s "Meeting" -b "Let's meet at 3pm"  # Draft from args
+mailos send --drafts                  # Send all drafts from draft-emails/ folder
+
 # Read recent emails
 mailos read --limit 10
 
@@ -89,7 +97,7 @@ mailos read --json  # Output in JSON format
 
 ```bash
 # Core Commands
-mailos send <email> <subject> <body>     # Send email
+mailos send -t email -s subject -b body  # Send email (using flags)
 mailos send --file body.txt              # Send with body from file
 mailos send --plain                      # Send as plain text only
 mailos read [--limit N] [--unread]       # Read emails
@@ -102,10 +110,33 @@ mailos local                              # Create local config for current dire
 mailos configure [--local]                # Manage configuration
 mailos provider                           # Configure AI provider
 mailos open [--from email] [--last N]    # Open emails in mail client
+mailos docs                               # Generate EMAILOS.md for AI CLI integration
 
 # Draft Management
-mailos drafts --interactive              # Create drafts interactively
+mailos draft                              # Create a single draft interactively
+mailos draft --to user@example.com --subject "Subject" --body "Body"  # Create draft from args
+mailos draft --file body.md --subject "Update"  # Create draft with body from file
+mailos draft --interactive                # Create multiple drafts interactively
+mailos draft --list                       # List all drafts from IMAP Drafts folder
+mailos draft --read                       # Read full content of drafts from IMAP
 mailos drafts --ai "query" --count N     # Generate drafts with AI
+mailos drafts --template welcome --data contacts.csv  # Generate from template
+
+# Draft command flags (same as send command):
+#   -t, --to        Recipient email addresses
+#   -c, --cc        CC recipients
+#   -B, --bcc       BCC recipients
+#   -s, --subject   Email subject
+#   -b, --body      Email body (Markdown supported)
+#   -f, --file      Read body from file
+#   -a, --attach    Attachments
+#   --priority      Email priority (high/normal/low)
+#   -P, --plain     Send as plain text only
+#   -S, --no-signature  Don't add signature
+#   --signature     Custom signature
+
+# 📤 To send all drafts, run: mailos send --drafts
+# 📮 Drafts are saved in your email account's Drafts folder
 mailos send --drafts                      # Send all draft emails
 mailos send --drafts --dry-run           # Preview drafts before sending
 mailos send --drafts --filter="priority:high"  # Send filtered drafts
@@ -139,14 +170,30 @@ mailos unsubscribe [--auto-open]         # Find unsubscribe links
 # Templates
 mailos template [create|edit|list|delete] # Manage templates
 # Templates support {{BODY}} and {{PROFILE_IMAGE}} placeholders
+
+# Note: 'mailos draft' is an alias for 'mailos drafts'
 ```
 
 ## 📖 Documentation
 
+### Getting Started
 - [Installation Guide](docs/installation.md) - Detailed installation instructions
 - [Setup Guide](docs/setup.md) - Configuration and provider setup
-- [Usage Guide](docs/usage.md) - Complete command reference
-- [AI Integration](docs/ai-integration.md) - Setting up AI features
+- [Interactive Mode](docs/interactive.md) - Interactive email interface
+
+### Core Features
+- [Draft Management](docs/drafts.md) - Complete draft creation and management guide
+- [Sending Emails](docs/send.md) - Email composition and sending
+- [Reading Emails](docs/read.md) - Email retrieval and filtering
+- [Templates](docs/template.md) - Email template management
+
+### Advanced Features
+- [Query & Search](docs/query.md) - Natural language email search
+- [Statistics](docs/stats.md) - Email analytics and insights
+- [Reports](docs/report.md) - Generate email reports
+- [Configuration](docs/configure.md) - Advanced configuration options
+
+### System
 - [License Integration](docs/LICENSE_INTEGRATION.md) - License system details
 
 ## ⌨️ Interactive Mode Keyboard Shortcuts
@@ -358,7 +405,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## 📊 Stats
 
-- **Latest Version**: 0.1.8 (dev version with unreleased features)
+- **Latest Version**: 0.1.9-dev (with IMAP draft synchronization)
 - **Downloads**: Available on [npm](https://www.npmjs.com/package/mailos)
 - **Stars**: [![GitHub stars](https://img.shields.io/github/stars/corp-os/emailos.svg)](https://github.com/corp-os/emailos/stargazers)
 - **License**: [Proprietary](https://email-os.com)

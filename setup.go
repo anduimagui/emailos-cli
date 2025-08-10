@@ -340,16 +340,11 @@ func Setup() error {
 		return fmt.Errorf("failed to save configuration: %v", err)
 	}
 
-	// Create README in .email directory
-	if err := CreateReadme(); err != nil {
-		fmt.Printf("Warning: failed to create README in .email: %v\n", err)
-	}
-
-	// Copy EmailOS README to current directory
-	if err := copyReadmeToCurrentDir(); err != nil {
-		fmt.Printf("Warning: failed to copy EmailOS README to current directory: %v\n", err)
+	// Generate and save AI instructions to EMAILOS.md
+	if err := SaveAIInstructions(); err != nil {
+		fmt.Printf("Warning: failed to create EMAILOS.md: %v\n", err)
 	} else {
-		fmt.Println(successStyle.Render("\n✓ EmailOS README.md has been added to your current directory"))
+		fmt.Println(successStyle.Render("\n✓ EMAILOS.md has been added to your current directory"))
 	}
 
 	fmt.Println(successStyle.Render("\n✓ Configuration saved successfully!"))

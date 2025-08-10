@@ -77,8 +77,27 @@ func InvokeAIProvider(query string) error {
 
 // buildAISystemMessage builds the system message with email documentation
 func buildAISystemMessage() string {
-	readme := getEmailOSDocumentation()
+	// First try to read from EMAILOS.md file if it exists
+	var readme string
+	if content, err := os.ReadFile("EMAILOS.md"); err == nil {
+		// Use the content from EMAILOS.md file
+		readme = string(content)
+	} else {
+		// Fall back to generating instructions dynamically
+		if instructions, err := GenerateAIInstructions(); err == nil {
+			readme = instructions
+		} else {
+			// Last resort: use basic hardcoded documentation
+			readme = getEmailOSDocumentation()
+		}
+	}
 	
+	// If readme already contains the system message header, return as is
+	if strings.Contains(readme, "You are an email manager") {
+		return readme
+	}
+	
+	// Otherwise, build the full system message
 	systemMessage := `You are an email manager with permission to read, send, and perform various functions on the user's behalf using the mailos CLI.
 
 IMPORTANT: You have full access to the mailos command-line tool to manage emails. Use the commands documented below to fulfill the user's request.
@@ -106,14 +125,28 @@ func getEmailOSDocumentation() string {
 
 ## Available Commands
 
-### Send Email
+### Create Draft Emails
 ` + "```bash" + `
-mailos send -t <recipient> -s <subject> -m <message> [-c <cc>] [-b <bcc>] [-f <file>]
+mailos draft [-t <recipient>] [-s <subject>] [-b <body>] [-c <cc>] [-B <bcc>] [-f <file>]
+mailos draft --list                      # List drafts from IMAP
+mailos draft --read                      # Read draft content from IMAP
 
 # Examples:
-mailos send -t user@example.com -s "Hello" -m "This is a test email"
-mailos send -t alice@example.com -t bob@example.com -s "Team Update" -m "Meeting at 3pm"
+mailos draft                              # Create draft interactively
+mailos draft -t user@example.com -s "Meeting" -b "Let's meet at 3pm"
+mailos draft --interactive               # Create multiple drafts
+` + "```" + `
+
+### Send Email
+` + "```bash" + `
+mailos send -t <recipient> -s <subject> -b <body> [-c <cc>] [-B <bcc>] [-f <file>]
+mailos send --drafts                      # Send all draft emails
+
+# Examples:
+mailos send -t user@example.com -s "Hello" -b "This is a test email"
+mailos send -t alice@example.com -t bob@example.com -s "Team Update" -b "Meeting at 3pm"
 mailos send -t recipient@example.com -s "Report" -f report.md
+mailos send --drafts                      # Send all drafts
 ` + "```" + `
 
 ### Read Emails
@@ -199,9 +232,9 @@ All email bodies support Markdown formatting:
 ### Send Command Options:
 - ` + "`-t, --to`" + `: Recipient email addresses (can be used multiple times)
 - ` + "`-s, --subject`" + `: Email subject
-- ` + "`-m, --body`" + `: Email body (supports Markdown)
+- ` + "`-b, --body`" + `: Email body (supports Markdown)
 - ` + "`-c, --cc`" + `: CC recipients (can be used multiple times)
-- ` + "`-b, --bcc`" + `: BCC recipients (can be used multiple times)
+- ` + "`-B, --bcc`" + `: BCC recipients (can be used multiple times)
 - ` + "`-f, --file`" + `: Read body from file
 - ` + "`-a, --attach`" + `: Attach files (can be used multiple times)
 - ` + "`-P, --plain`" + `: Send as plain text (no HTML conversion)
@@ -231,7 +264,7 @@ All email bodies support Markdown formatting:
 
 ### Send a quick email:
 ` + "```bash" + `
-mailos send -t boss@company.com -s "Project Update" -m "The project is on track for Friday delivery."
+mailos send -t boss@company.com -s "Project Update" -b "The project is on track for Friday delivery."
 ` + "```" + `
 
 ### Read and manage unread emails:
@@ -248,7 +281,7 @@ mailos delete --from newsletter@spam.com --confirm
 
 ### Send an email with attachment:
 ` + "```bash" + `
-mailos send -t client@example.com -s "Report Attached" -m "Please find the report attached." -a report.pdf
+mailos send -t client@example.com -s "Report Attached" -b "Please find the report attached." -a report.pdf
 ` + "```" + `
 `
 }

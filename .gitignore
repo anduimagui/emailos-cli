@@ -30,3 +30,5 @@ npm/package-lock.json
 dist/
 build/
 /.email
+/draft-emails
+/test_local
