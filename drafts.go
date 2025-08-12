@@ -26,17 +26,18 @@ type DraftsOptions struct {
 	DraftCount    int
 	List          bool   // List drafts from IMAP
 	Read          bool   // Read drafts from IMAP
-	// Email composition fields
+	// Email composition fields (same as send command)
 	To            []string
 	CC            []string
 	BCC           []string
 	Subject       string
 	Body          string
+	FileBody      string   // Read body from file (-f flag)
 	Attachments   []string
 	Priority      string
-	PlainText     bool
-	NoSignature   bool
-	Signature     string
+	PlainText     bool    // Send as plain text (-P flag)
+	NoSignature   bool    // Don't include signature (-S flag)
+	Signature     string  // Custom signature text
 }
 
 // DraftEmail represents an email draft with metadata
@@ -53,14 +54,28 @@ type DraftEmail struct {
 
 // DraftsCommand generates draft emails based on user input
 func DraftsCommand(opts DraftsOptions) error {
-	// Handle listing drafts from IMAP
+	// Handle listing drafts from IMAP or local storage
 	if opts.List || opts.Read {
+		// First try to list from local storage
+		if err := listLocalDrafts(opts.Read); err != nil {
+			fmt.Printf("Note: Could not read local drafts: %v\n", err)
+		}
+		// Then list from IMAP
 		return listDraftsFromIMAP(opts.Read)
 	}
 
-	// Set default output directory
+	// Ensure local .email directories exist
+	if err := EnsureEmailDirectories(); err != nil {
+		return fmt.Errorf("failed to create email directories: %v", err)
+	}
+
+	// Set default output directory to .email/drafts
 	if opts.OutputDir == "" {
-		opts.OutputDir = "draft-emails"
+		draftsDir, err := GetDraftsDir()
+		if err != nil {
+			return fmt.Errorf("failed to get drafts directory: %v", err)
+		}
+		opts.OutputDir = draftsDir
 	}
 
 	// Create output directory if it doesn't exist
@@ -92,14 +107,24 @@ func DraftsCommand(opts DraftsOptions) error {
 		}
 	} else {
 		// Check if we have command-line specified fields
-		if len(opts.To) > 0 || opts.Subject != "" || opts.Body != "" {
+		if len(opts.To) > 0 || opts.Subject != "" || opts.Body != "" || opts.FileBody != "" {
+			// Handle body from file if specified
+			body := opts.Body
+			if opts.FileBody != "" {
+				fileContent, err := os.ReadFile(opts.FileBody)
+				if err != nil {
+					return fmt.Errorf("failed to read body from file %s: %v", opts.FileBody, err)
+				}
+				body = string(fileContent)
+			}
+			
 			// Create draft from command-line arguments
 			draft := DraftEmail{
 				To:          opts.To,
 				CC:          opts.CC,
 				BCC:         opts.BCC,
 				Subject:     opts.Subject,
-				Body:        opts.Body,
+				Body:        body,
 				Attachments: opts.Attachments,
 				Priority:    opts.Priority,
 			}
@@ -116,15 +141,25 @@ func DraftsCommand(opts DraftsOptions) error {
 
 	// Save drafts to both local files and IMAP Drafts folder
 	for i, draft := range drafts {
-		// Save to local file
-		filename := generateDraftFilename(draft.Subject, i+1)
-		filepath := filepath.Join(opts.OutputDir, filename)
-		
-		if err := saveDraftToFile(draft, filepath); err != nil {
-			return fmt.Errorf("failed to save draft %d to file: %v", i+1, err)
+		// Save to local .email/drafts as JSON
+		if err := saveLocalDraft(draft); err != nil {
+			fmt.Printf("⚠️  Could not save draft to local storage: %v\n", err)
+		} else {
+			fmt.Printf("✓ Saved draft to local .email/drafts folder\n")
 		}
 		
-		fmt.Printf("✓ Created local draft: %s\n", filepath)
+		// Also save as markdown file if OutputDir is not the default drafts dir
+		draftsDir, _ := GetDraftsDir()
+		if opts.OutputDir != draftsDir {
+			filename := generateDraftFilename(draft.Subject, i+1)
+			filepath := filepath.Join(opts.OutputDir, filename)
+			
+			if err := saveDraftToFile(draft, filepath); err != nil {
+				return fmt.Errorf("failed to save draft %d to file: %v", i+1, err)
+			}
+			
+			fmt.Printf("✓ Created draft file: %s\n", filepath)
+		}
 		
 		// Save to IMAP Drafts folder
 		if err := saveDraftToIMAP(draft); err != nil {

@@ -2,8 +2,12 @@ package mailos
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,9 +34,16 @@ type ReadOptions struct {
 	ToAddress   string
 	Subject     string
 	Since       time.Time
+	LocalOnly   bool  // Only read from local storage
+	SyncLocal   bool  // Sync received emails to local storage
 }
 
 func Read(opts ReadOptions) ([]*Email, error) {
+	// If local only, read from local storage
+	if opts.LocalOnly {
+		return readFromLocalStorage(opts)
+	}
+	
 	config, err := LoadConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %v", err)
@@ -139,6 +150,16 @@ func Read(opts ReadOptions) ([]*Email, error) {
 	// Reverse to get newest first
 	for i, j := 0, len(emails)-1; i < j; i, j = i+1, j-1 {
 		emails[i], emails[j] = emails[j], emails[i]
+	}
+	
+	// Save to local storage if requested
+	if opts.SyncLocal {
+		for _, email := range emails {
+			if err := saveReceivedEmail(email); err != nil {
+				// Log error but don't fail the read
+				fmt.Printf("Note: Could not save email to local storage: %v\n", err)
+			}
+		}
 	}
 
 	return emails, nil
@@ -367,5 +388,150 @@ func DeleteEmails(ids []uint32) error {
 		return fmt.Errorf("failed to expunge deleted messages: %v", err)
 	}
 
+	return nil
+}
+
+// readFromLocalStorage reads emails from the local .email/received directory
+func readFromLocalStorage(opts ReadOptions) ([]*Email, error) {
+	// Ensure directories exist
+	if err := EnsureEmailDirectories(); err != nil {
+		return nil, fmt.Errorf("failed to create email directories: %v", err)
+	}
+	
+	// Get received directory
+	receivedDir, err := GetReceivedDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get received directory: %v", err)
+	}
+	
+	// Read all JSON files from the directory
+	files, err := os.ReadDir(receivedDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []*Email{}, nil
+		}
+		return nil, fmt.Errorf("failed to read received directory: %v", err)
+	}
+	
+	var emails []*Email
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".json") {
+			continue
+		}
+		
+		filepath := filepath.Join(receivedDir, file.Name())
+		data, err := os.ReadFile(filepath)
+		if err != nil {
+			continue
+		}
+		
+		var savedEmail SavedEmail
+		if err := json.Unmarshal(data, &savedEmail); err != nil {
+			continue
+		}
+		
+		// Convert SavedEmail to Email
+		email := &Email{
+			ID:          0, // Local emails don't have IMAP IDs
+			From:        savedEmail.From,
+			To:          savedEmail.To,
+			Subject:     savedEmail.Subject,
+			Date:        savedEmail.Date,
+			Body:        savedEmail.Body,
+			BodyHTML:    savedEmail.BodyHTML,
+			Attachments: savedEmail.Attachments,
+		}
+		
+		// Apply filters
+		if opts.FromAddress != "" && !strings.Contains(strings.ToLower(email.From), strings.ToLower(opts.FromAddress)) {
+			continue
+		}
+		if opts.Subject != "" && !strings.Contains(strings.ToLower(email.Subject), strings.ToLower(opts.Subject)) {
+			continue
+		}
+		if !opts.Since.IsZero() && email.Date.Before(opts.Since) {
+			continue
+		}
+		
+		emails = append(emails, email)
+	}
+	
+	// Sort by date (newest first)
+	sort.Slice(emails, func(i, j int) bool {
+		return emails[i].Date.After(emails[j].Date)
+	})
+	
+	// Apply limit
+	if opts.Limit > 0 && len(emails) > opts.Limit {
+		emails = emails[:opts.Limit]
+	}
+	
+	return emails, nil
+}
+
+// saveReceivedEmail saves an email to the local .email/received directory
+func saveReceivedEmail(email *Email) error {
+	// Ensure directories exist
+	if err := EnsureEmailDirectories(); err != nil {
+		return fmt.Errorf("failed to create email directories: %v", err)
+	}
+	
+	// Get received directory
+	receivedDir, err := GetReceivedDir()
+	if err != nil {
+		return fmt.Errorf("failed to get received directory: %v", err)
+	}
+	
+	// Create a SavedEmail struct
+	savedEmail := SavedEmail{
+		ID:          fmt.Sprintf("%d_%d", email.ID, email.Date.Unix()),
+		From:        email.From,
+		To:          email.To,
+		Subject:     email.Subject,
+		Body:        email.Body,
+		BodyHTML:    email.BodyHTML,
+		Date:        email.Date,
+		Attachments: email.Attachments,
+	}
+	
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("%s_%s_%s.json",
+		email.Date.Format("20060102_150405"),
+		strings.ReplaceAll(strings.ReplaceAll(email.From, "/", "_"), " ", "_"),
+		strings.ReplaceAll(strings.ReplaceAll(email.Subject, "/", "_"), " ", "_"))
+	
+	// Ensure filename is not too long
+	if len(filename) > 150 {
+		filename = filename[:150] + ".json"
+	}
+	
+	// Clean filename of problematic characters
+	filename = strings.ReplaceAll(filename, "<", "")
+	filename = strings.ReplaceAll(filename, ">", "")
+	filename = strings.ReplaceAll(filename, ":", "")
+	filename = strings.ReplaceAll(filename, "\"", "")
+	filename = strings.ReplaceAll(filename, "|", "")
+	filename = strings.ReplaceAll(filename, "?", "")
+	filename = strings.ReplaceAll(filename, "*", "")
+	
+	filepath := filepath.Join(receivedDir, filename)
+	
+	// Check if file already exists
+	if _, err := os.Stat(filepath); err == nil {
+		// File already exists, skip
+		return nil
+	}
+	
+	// Marshal to JSON
+	data, err := json.MarshalIndent(savedEmail, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal email: %v", err)
+	}
+	
+	// Write to file
+	if err := os.WriteFile(filepath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write email file: %v", err)
+	}
+	
 	return nil
 }

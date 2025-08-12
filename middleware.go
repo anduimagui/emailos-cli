@@ -47,19 +47,26 @@ func EnsureInitialized() error {
 			fmt.Println("   Please ensure you have an active internet connection")
 			fmt.Println("   to revalidate your license.")
 			fmt.Println()
-			return nil // Allow operation in grace period
+			// Continue to auto-sync check even in grace period
+		} else {
+			fmt.Println("Your license may have expired or been revoked.")
+			fmt.Println()
+			fmt.Println("Options:")
+			fmt.Println("1. Check your internet connection and try again")
+			fmt.Printf("2. Visit https://%s/checkout to renew your license\n", APP_SITE)
+			fmt.Println("3. Contact support if you believe this is an error")
+			fmt.Println()
+			fmt.Println("Run 'mailos setup' to enter a new license key.")
+			return fmt.Errorf("valid license required to continue")
 		}
-		
-		fmt.Println("Your license may have expired or been revoked.")
-		fmt.Println()
-		fmt.Println("Options:")
-		fmt.Println("1. Check your internet connection and try again")
-		fmt.Printf("2. Visit https://%s/checkout to renew your license\n", APP_SITE)
-		fmt.Println("3. Contact support if you believe this is an error")
-		fmt.Println()
-		fmt.Println("Run 'mailos setup' to enter a new license key.")
-		return fmt.Errorf("valid license required to continue")
 	}
+	
+	// Check if auto-sync is needed (run in background, don't block)
+	go func() {
+		if err := RunAutoSyncIfNeeded(); err != nil {
+			// Silently fail - auto-sync is not critical
+		}
+	}()
 	
 	return nil
 }

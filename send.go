@@ -2,8 +2,11 @@ package mailos
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/smtp"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	
@@ -21,6 +24,21 @@ type EmailMessage struct {
 	Attachments     []string
 	IncludeSignature bool
 	SignatureText   string
+}
+
+// SavedEmail represents an email saved to local storage
+type SavedEmail struct {
+	ID          string    `json:"id"`
+	From        string    `json:"from"`
+	To          []string  `json:"to"`
+	CC          []string  `json:"cc,omitempty"`
+	BCC         []string  `json:"bcc,omitempty"`
+	Subject     string    `json:"subject"`
+	Body        string    `json:"body"`
+	BodyHTML    string    `json:"body_html,omitempty"`
+	Date        time.Time `json:"date"`
+	RawMessage  string    `json:"raw_message"`
+	Attachments []string  `json:"attachments,omitempty"`
 }
 
 func Send(msg *EmailMessage) error {
@@ -132,7 +150,7 @@ func Send(msg *EmailMessage) error {
 			return err
 		}
 		// After successfully sending, save to Sent folder
-		return saveToSentFolder(message.String(), config)
+		return saveToSentFolder(message.String(), config, msg, from)
 	} else if useSSL {
 		// Use SMTPS (SMTP over SSL)
 		err = sendWithSMTPS(
@@ -147,7 +165,7 @@ func Send(msg *EmailMessage) error {
 			return err
 		}
 		// After successfully sending, save to Sent folder
-		return saveToSentFolder(message.String(), config)
+		return saveToSentFolder(message.String(), config, msg, from)
 	}
 
 	// Plain SMTP (not recommended)
@@ -158,16 +176,22 @@ func Send(msg *EmailMessage) error {
 	}
 	
 	// After successfully sending, save to Sent folder
-	return saveToSentFolder(message.String(), config)
+	return saveToSentFolder(message.String(), config, msg, from)
 }
 
-// saveToSentFolder saves the sent email to the IMAP Sent folder
-func saveToSentFolder(messageContent string, config *Config) error {
+// saveToSentFolder saves the sent email to both local storage and IMAP Sent folder
+func saveToSentFolder(messageContent string, config *Config, msg *EmailMessage, from string) error {
+	// First, save to local .email/sent folder
+	if err := saveToLocalSentFolder(messageContent, config, msg, from); err != nil {
+		// Log error but don't fail the send
+		fmt.Printf("Note: Could not save to local sent folder: %v\n", err)
+	}
+	
 	// Get IMAP settings from provider
 	imapHost, imapPort, err := config.GetIMAPSettings()
 	if err != nil {
 		// If we can't get IMAP settings, just log and continue (email was sent)
-		fmt.Println("Note: Could not save to Sent folder (IMAP not configured)")
+		fmt.Println("Note: Could not save to IMAP Sent folder (IMAP not configured)")
 		return nil
 	}
 
@@ -182,14 +206,14 @@ func saveToSentFolder(messageContent string, config *Config) error {
 		c, err = client.Dial(fmt.Sprintf("%s:%d", imapHost, imapPort))
 	}
 	if err != nil {
-		fmt.Printf("Note: Could not save to Sent folder (connection failed: %v)\n", err)
+		fmt.Printf("Note: Could not save to IMAP Sent folder (connection failed: %v)\n", err)
 		return nil
 	}
 	defer c.Logout()
 
 	// Login
 	if err := c.Login(config.Email, config.Password); err != nil {
-		fmt.Printf("Note: Could not save to Sent folder (login failed: %v)\n", err)
+		fmt.Printf("Note: Could not save to IMAP Sent folder (login failed: %v)\n", err)
 		return nil
 	}
 
@@ -208,7 +232,7 @@ func saveToSentFolder(messageContent string, config *Config) error {
 	}
 	
 	if selectedFolder == "" {
-		fmt.Println("Note: Could not find Sent folder to save message")
+		fmt.Println("Note: Could not find IMAP Sent folder to save message")
 		return nil
 	}
 
@@ -221,10 +245,64 @@ func saveToSentFolder(messageContent string, config *Config) error {
 	date := time.Now()
 	err = c.Append(selectedFolder, flags, date, strings.NewReader(messageWithCRLF))
 	if err != nil {
-		fmt.Printf("Note: Could not save to Sent folder (append failed: %v)\n", err)
+		fmt.Printf("Note: Could not save to IMAP Sent folder (append failed: %v)\n", err)
 		return nil
 	}
 
+	return nil
+}
+
+// saveToLocalSentFolder saves the email to the local .email/sent directory
+func saveToLocalSentFolder(messageContent string, config *Config, msg *EmailMessage, from string) error {
+	// Ensure directories exist
+	if err := EnsureEmailDirectories(); err != nil {
+		return fmt.Errorf("failed to create email directories: %v", err)
+	}
+	
+	// Get sent directory
+	sentDir, err := GetSentDir()
+	if err != nil {
+		return fmt.Errorf("failed to get sent directory: %v", err)
+	}
+	
+	// Create a SavedEmail struct
+	savedEmail := SavedEmail{
+		ID:          fmt.Sprintf("%d_%s", time.Now().Unix(), strings.ReplaceAll(msg.Subject, " ", "_")),
+		From:        from,
+		To:          msg.To,
+		CC:          msg.CC,
+		BCC:         msg.BCC,
+		Subject:     msg.Subject,
+		Body:        msg.Body,
+		BodyHTML:    msg.BodyHTML,
+		Date:        time.Now(),
+		RawMessage:  messageContent,
+		Attachments: msg.Attachments,
+	}
+	
+	// Generate filename with timestamp
+	filename := fmt.Sprintf("%s_%s.json", 
+		time.Now().Format("20060102_150405"),
+		strings.ReplaceAll(strings.ReplaceAll(msg.Subject, "/", "_"), " ", "_"))
+	
+	// Ensure filename is not too long
+	if len(filename) > 100 {
+		filename = filename[:100] + ".json"
+	}
+	
+	filepath := filepath.Join(sentDir, filename)
+	
+	// Marshal to JSON
+	data, err := json.MarshalIndent(savedEmail, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal email: %v", err)
+	}
+	
+	// Write to file
+	if err := os.WriteFile(filepath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write email file: %v", err)
+	}
+	
 	return nil
 }
 

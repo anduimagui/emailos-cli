@@ -18,6 +18,23 @@ func ManageTemplate() error {
 	fmt.Println("EMAIL TEMPLATE CUSTOMIZATION")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
+	
+	// Load config to show current from_email
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Println("Warning: Could not load email configuration")
+	} else {
+		fromEmail := config.Email
+		if config.FromEmail != "" {
+			fromEmail = config.FromEmail
+		}
+		fmt.Printf("Current sender email: %s\n", fromEmail)
+		if config.FromName != "" {
+			fmt.Printf("Display name: %s\n", config.FromName)
+		}
+		fmt.Println()
+	}
+	
 	fmt.Println("Customize your email template to create beautiful,")
 	fmt.Println("branded emails with your own design.")
 	fmt.Println()

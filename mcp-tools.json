@@ -1,0 +1,1046 @@
+[
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Launch the AI chat interface for natural language email interactions.\nThis uses the React Ink UI to provide a modern chat experience.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: chat",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_chat"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Configure email settings. By default modifies global configuration (~/.email/).\nUse --local flag to create/modify project-specific configuration (.email/)",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: configure",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "ai": {
+              "description": "AI CLI provider (claude-code, claude-code-yolo, openai, gemini, opencode, none)",
+              "type": "string"
+            },
+            "email": {
+              "description": "Email address to configure",
+              "type": "string"
+            },
+            "from": {
+              "description": "From email address (appears as sender)",
+              "type": "string"
+            },
+            "local": {
+              "description": "Create/modify local configuration (.email/) instead of global (~/.email/)",
+              "type": "boolean"
+            },
+            "name": {
+              "description": "Display name for emails",
+              "type": "string"
+            },
+            "provider": {
+              "description": "Email provider (gmail, outlook, yahoo, icloud, proton, fastmail, custom)",
+              "type": "string"
+            },
+            "quick": {
+              "description": "Quick configuration menu",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_configure"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Delete emails",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: delete",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "confirm": {
+              "description": "Confirm deletion",
+              "type": "boolean"
+            },
+            "from": {
+              "description": "Delete all from sender",
+              "type": "string"
+            },
+            "ids": {
+              "description": "Email IDs to delete",
+              "type": "string"
+            },
+            "subject": {
+              "description": "Delete all with subject",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_delete"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Generate EMAILOS.md file with complete command reference for AI CLI integration.\nThis reads from the docs/ directory and creates a comprehensive instruction file.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: docs",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_docs"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Create draft emails in markdown format with frontmatter metadata.\nDrafts are saved to the draft-emails/ folder and can be sent using 'mailos send --drafts'.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: drafts",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "ai": {
+              "description": "Use AI to generate drafts from query",
+              "type": "boolean"
+            },
+            "attach": {
+              "description": "Attachments",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bcc": {
+              "description": "BCC recipients",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "description": "Email body (Markdown supported)",
+              "type": "string"
+            },
+            "cc": {
+              "description": "CC recipients",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "count": {
+              "description": "Number of drafts to generate (with AI)",
+              "type": "integer"
+            },
+            "data": {
+              "description": "Data file (CSV/JSON) for bulk draft generation",
+              "type": "string"
+            },
+            "file": {
+              "description": "Read body from file",
+              "type": "string"
+            },
+            "interactive": {
+              "description": "Interactive mode for creating drafts",
+              "type": "boolean"
+            },
+            "list": {
+              "description": "List drafts from IMAP Drafts folder",
+              "type": "boolean"
+            },
+            "no-signature": {
+              "description": "Don't add signature",
+              "type": "boolean"
+            },
+            "output": {
+              "description": "Output directory for drafts",
+              "type": "string"
+            },
+            "plain": {
+              "description": "Send as plain text only",
+              "type": "boolean"
+            },
+            "priority": {
+              "description": "Email priority (high/normal/low)",
+              "type": "string"
+            },
+            "read": {
+              "description": "Read full content of drafts from IMAP",
+              "type": "boolean"
+            },
+            "signature": {
+              "description": "Custom signature",
+              "type": "string"
+            },
+            "subject": {
+              "description": "Email subject",
+              "type": "string"
+            },
+            "template": {
+              "description": "Use a template for draft generation",
+              "type": "string"
+            },
+            "to": {
+              "description": "Recipient email addresses",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_drafts"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Show current configuration info",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: info",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_info"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Launch interactive mode",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: interactive",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "ink": {
+              "description": "Use the React Ink UI (experimental)",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_interactive"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Create a project-specific configuration in the current directory (.email/).\nThis configuration will inherit settings from your global configuration (~/.email/),\nallowing you to override specific settings like from address or display name for this project.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: local",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_local"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Mark emails as read",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: mark-read",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "from": {
+              "description": "Mark all from sender",
+              "type": "string"
+            },
+            "ids": {
+              "description": "Email IDs to mark as read",
+              "type": "string"
+            },
+            "subject": {
+              "description": "Mark all with subject",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_mark-read"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Open an email in your default mail application",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: open",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "from": {
+              "description": "Open email from sender",
+              "type": "string"
+            },
+            "id": {
+              "description": "Email ID to open",
+              "type": "integer"
+            },
+            "last": {
+              "description": "Open from last N emails (opens most recent)",
+              "type": "integer"
+            },
+            "subject": {
+              "description": "Open email by subject",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_open"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Select or configure AI provider",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: provider",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_provider"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Read emails",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: read",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "days": {
+              "description": "Show emails from last N days",
+              "type": "integer"
+            },
+            "from": {
+              "description": "Filter by sender",
+              "type": "string"
+            },
+            "json": {
+              "description": "Output as JSON",
+              "type": "boolean"
+            },
+            "number": {
+              "description": "Number of emails to read",
+              "type": "integer"
+            },
+            "output-dir": {
+              "description": "Directory to save markdown files",
+              "type": "string"
+            },
+            "range": {
+              "description": "Time range (e.g., 'Last hour', 'Today', 'Yesterday', 'This week')",
+              "type": "string"
+            },
+            "save-markdown": {
+              "description": "Save emails as markdown files",
+              "type": "boolean"
+            },
+            "subject": {
+              "description": "Filter by subject",
+              "type": "string"
+            },
+            "to": {
+              "description": "Filter by recipient (defaults to from_email in config if set)",
+              "type": "string"
+            },
+            "unread": {
+              "description": "Show only unread emails",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_read"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Generate an email report for a selected time range",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: report",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "output": {
+              "description": "Output file path (optional)",
+              "type": "string"
+            },
+            "range": {
+              "description": "Time range (e.g., 'Last hour', 'Today', 'Yesterday', 'This week')",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_report"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Send an email",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: send",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "attach": {
+              "description": "Attachments",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bcc": {
+              "description": "BCC recipients",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "description": "Email body (Markdown supported)",
+              "type": "string"
+            },
+            "cc": {
+              "description": "CC recipients",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "confirm": {
+              "description": "Confirm before sending each draft",
+              "type": "boolean"
+            },
+            "delete-after": {
+              "description": "Delete drafts after successful sending",
+              "type": "boolean"
+            },
+            "draft-dir": {
+              "description": "Directory containing draft emails",
+              "type": "string"
+            },
+            "drafts": {
+              "description": "Send all draft emails from draft-emails/ folder",
+              "type": "boolean"
+            },
+            "dry-run": {
+              "description": "Preview what would be sent without actually sending",
+              "type": "boolean"
+            },
+            "file": {
+              "description": "Read body from file",
+              "type": "string"
+            },
+            "filter": {
+              "description": "Filter drafts (e.g., 'priority:high', 'to:*@example.com')",
+              "type": "string"
+            },
+            "log-file": {
+              "description": "Log sent emails to file",
+              "type": "string"
+            },
+            "message": {
+              "description": "Email body (alias for --body)",
+              "type": "string"
+            },
+            "no-signature": {
+              "description": "No signature",
+              "type": "boolean"
+            },
+            "plain": {
+              "description": "Send as plain text",
+              "type": "boolean"
+            },
+            "signature": {
+              "description": "Custom signature",
+              "type": "string"
+            },
+            "subject": {
+              "description": "Email subject",
+              "type": "string"
+            },
+            "to": {
+              "description": "Recipient email addresses",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_send"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Read sent emails",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: sent",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "days": {
+              "description": "Show sent emails from last N days",
+              "type": "integer"
+            },
+            "json": {
+              "description": "Output as JSON",
+              "type": "boolean"
+            },
+            "number": {
+              "description": "Number of sent emails to read",
+              "type": "integer"
+            },
+            "output-dir": {
+              "description": "Directory to save markdown files",
+              "type": "string"
+            },
+            "range": {
+              "description": "Time range (e.g., 'Last hour', 'Today', 'Yesterday', 'This week')",
+              "type": "string"
+            },
+            "save-markdown": {
+              "description": "Save emails as markdown files",
+              "type": "boolean"
+            },
+            "subject": {
+              "description": "Filter by subject",
+              "type": "string"
+            },
+            "to": {
+              "description": "Filter by recipient",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_sent"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Set up your email configuration",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: setup",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_setup"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Show email statistics and analytics",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: stats",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "days": {
+              "description": "Analyze emails from last N days",
+              "type": "integer"
+            },
+            "from": {
+              "description": "Filter by sender",
+              "type": "string"
+            },
+            "number": {
+              "description": "Number of emails to analyze",
+              "type": "integer"
+            },
+            "range": {
+              "description": "Time range (e.g., 'Last hour', 'Today', 'Yesterday', 'This week')",
+              "type": "string"
+            },
+            "subject": {
+              "description": "Filter by subject",
+              "type": "string"
+            },
+            "to": {
+              "description": "Filter by recipient",
+              "type": "string"
+            },
+            "unread": {
+              "description": "Analyze only unread emails",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_stats"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Sync emails from your IMAP server to local filesystem.\nCreates directory structure: emails/received, emails/sent, emails/drafts\nEach email is saved as a markdown file with metadata.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: sync",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "days": {
+              "description": "Sync emails from last N days (0 for all)",
+              "type": "integer"
+            },
+            "dir": {
+              "description": "Base directory for storing emails",
+              "type": "string"
+            },
+            "include-read": {
+              "description": "Include already read emails",
+              "type": "boolean"
+            },
+            "limit": {
+              "description": "Maximum number of emails to sync per folder",
+              "type": "integer"
+            },
+            "verbose": {
+              "description": "Show detailed progress",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_sync"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Customize your HTML email template using the EmailOS Template Editor.\nThe template will be saved and used for all future emails.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: template",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "remove": {
+              "description": "Remove existing template",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_template"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Test email functionality with search and fetch capabilities",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: test",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "interactive": {
+              "description": "Run interactive tests",
+              "type": "boolean"
+            },
+            "verbose": {
+              "description": "Show detailed output",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_test"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Find unsubscribe links and optionally open in browser",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: unsubscribe",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "auto-open": {
+              "description": "Automatically open unsubscribe link without prompting",
+              "type": "boolean"
+            },
+            "from": {
+              "description": "Find unsubscribe links from sender",
+              "type": "string"
+            },
+            "number": {
+              "description": "Number of emails to check",
+              "type": "integer"
+            },
+            "open": {
+              "description": "Open the first unsubscribe link in browser",
+              "type": "boolean"
+            },
+            "subject": {
+              "description": "Find unsubscribe links by subject",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos_unsubscribe"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "EmailOS is a command-line email client that supports multiple providers\nand provides a consistent interface for sending and reading emails.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Positional arguments\nUsage: mailos",
+          "type": "string"
+        },
+        "flags": {
+          "description": "Flag options",
+          "properties": {
+            "ink": {
+              "description": "Use the React Ink UI (experimental)",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "flags",
+        "args"
+      ],
+      "type": "object"
+    },
+    "name": "mailos"
+  }
+]

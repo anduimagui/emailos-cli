@@ -1,6 +1,11 @@
 version: '3'
 
 tasks:
+  dp:
+    desc: Build the mailos binary locally
+    cmds:
+      - task publish-patch
+
   build:
     desc: Build the mailos binary locally
     cmds:

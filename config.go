@@ -23,6 +23,10 @@ type Config struct {
 	ProfileImage  string `json:"profile_image,omitempty"`
 	LicenseKey    string `json:"license_key,omitempty"`
 	DefaultAICLI  string `json:"default_ai_cli,omitempty"`
+	LastSyncTime  string `json:"last_sync_time,omitempty"`
+	AutoSync      bool   `json:"auto_sync,omitempty"`
+	SyncDir       string `json:"sync_dir,omitempty"`
+	LocalStorageDir string `json:"local_storage_dir,omitempty"`
 }
 
 // LegacyConfig represents the old config format
@@ -50,6 +54,12 @@ func GetConfigPath() (string, error) {
 }
 
 func LoadConfig() (*Config, error) {
+	// Ensure email directories exist when loading config
+	if err := EnsureEmailDirectories(); err != nil {
+		// Don't fail loading config, just warn
+		fmt.Printf("Note: Could not create email directories: %v\n", err)
+	}
+	
 	// First check for local config
 	localConfig := filepath.Join(".email", "config.json")
 	if _, err := os.Stat(localConfig); err == nil {
@@ -293,6 +303,81 @@ func (c *Config) GetIMAPSettings() (host string, port int, err error) {
 		return "", 0, fmt.Errorf("unknown provider: %s", c.Provider)
 	}
 	return provider.IMAPHost, provider.IMAPPort, nil
+}
+
+// GetEmailStorageDir returns the base directory for email storage (.email folder)
+func GetEmailStorageDir() (string, error) {
+	// Check for local .email directory first
+	localDir := ".email"
+	if info, err := os.Stat(localDir); err == nil && info.IsDir() {
+		return filepath.Abs(localDir)
+	}
+	
+	// Fall back to home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".email"), nil
+}
+
+// GetSentDir returns the path to the sent emails directory
+func GetSentDir() (string, error) {
+	baseDir, err := GetEmailStorageDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(baseDir, "sent"), nil
+}
+
+// GetReceivedDir returns the path to the received emails directory
+func GetReceivedDir() (string, error) {
+	baseDir, err := GetEmailStorageDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(baseDir, "received"), nil
+}
+
+// GetDraftsDir returns the path to the drafts directory
+func GetDraftsDir() (string, error) {
+	baseDir, err := GetEmailStorageDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(baseDir, "drafts"), nil
+}
+
+// EnsureEmailDirectories creates the necessary email storage directories
+func EnsureEmailDirectories() error {
+	baseDir, err := GetEmailStorageDir()
+	if err != nil {
+		return err
+	}
+	
+	// Create main .email directory
+	if err := os.MkdirAll(baseDir, 0700); err != nil {
+		return err
+	}
+	
+	// Create subdirectories
+	subdirs := []string{"sent", "received", "drafts"}
+	for _, subdir := range subdirs {
+		path := filepath.Join(baseDir, subdir)
+		if err := os.MkdirAll(path, 0700); err != nil {
+			return err
+		}
+	}
+	
+	// Ensure .gitignore is updated
+	if strings.HasPrefix(baseDir, ".email") || strings.Contains(baseDir, "/.email") {
+		if err := EnsureGitIgnore(); err != nil {
+			// Don't fail, just warn
+			fmt.Printf("Note: Could not update .gitignore: %v\n", err)
+		}
+	}
+	
+	return nil
 }
 
 func CreateReadme() error {

@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/manifoldco/promptui"
@@ -16,6 +17,12 @@ import (
 )
 
 func Setup() error {
+	// Ensure email directories exist
+	if err := EnsureEmailDirectories(); err != nil {
+		// Don't fail setup, just warn
+		fmt.Printf("Note: Could not create email directories: %v\n", err)
+	}
+	
 	// Define styles
 	logoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39")) // Bright blue
 	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("87")) // Light cyan
@@ -338,6 +345,35 @@ func Setup() error {
 	// Save config
 	if err := SaveConfig(config); err != nil {
 		return fmt.Errorf("failed to save configuration: %v", err)
+	}
+	
+	// Ask if user wants to sync emails now
+	fmt.Println()
+	fmt.Println(headerStyle.Render("EMAIL SYNCHRONIZATION"))
+	fmt.Println(headerStyle.Render("━━━━━━━━━━━━━━━━━━━━"))
+	fmt.Println()
+	fmt.Println("Would you like to sync your emails to the local filesystem now?")
+	fmt.Println("This will create folders for received, sent, and draft emails.")
+	fmt.Print(promptStyle.Render("\nSync emails now? (Y/n): "))
+	syncNow, _ := reader.ReadString('\n')
+	syncNow = strings.TrimSpace(strings.ToLower(syncNow))
+	
+	if syncNow != "n" && syncNow != "no" {
+		fmt.Println("\nSyncing emails (this may take a moment)...")
+		syncOpts := SyncOptions{
+			BaseDir:     "emails",
+			Limit:       100,
+			IncludeRead: false,
+			Verbose:     false,
+			Since:       time.Now().AddDate(0, 0, -30), // Sync last 30 days for initial setup
+		}
+		
+		if err := SyncEmails(syncOpts); err != nil {
+			fmt.Printf(warningStyle.Render("\n⚠ Email sync failed: %v\n"), err)
+			fmt.Println("You can try syncing later with: mailos sync")
+		} else {
+			fmt.Println(successStyle.Render("\n✓ Emails synced successfully!"))
+		}
 	}
 
 	// Generate and save AI instructions to EMAILOS.md

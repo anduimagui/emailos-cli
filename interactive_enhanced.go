@@ -16,12 +16,22 @@ func InteractiveModeWithMenu() error {
 
 // InteractiveModeWithMenuOptions runs the enhanced interactive mode with control over display
 func InteractiveModeWithMenuOptions(showLogo bool, showInitialStatus bool) error {
-	// Default to classic UI, unless --ink flag is used or MAILOS_USE_INK is set
+	// Check for MAILOS_USE_BUBBLETEA to use new Bubble Tea UI (default)
+	useBubbleTea := os.Getenv("MAILOS_USE_BUBBLETEA") != "false"
+	
+	// Check for legacy UI modes
 	useInkUI := os.Getenv("MAILOS_USE_INK") == "true"
+	
+	if useBubbleTea && !useInkUI {
+		// Use the new Bubble Tea implementation by default
+		return InteractiveModeWithBubbleTea()
+	}
+	
 	if useInkUI {
 		return InteractiveModeWithReactInk()
 	}
 
+	// Fall back to classic UI
 	// Check configuration
 	config, err := LoadConfig()
 	if err != nil {
@@ -80,49 +90,25 @@ func showEnhancedInteractiveMenuWithOptions(needsProvider bool, showStatus bool)
 		DisplayStatusBox(config)
 	}
 	
-	// Get user input with full arrow key support
-	input := ReadLineWithArrows("▸ ")
-	if input == "__EXIT__" {
-		return fmt.Errorf("exit")
-	}
+	// Check for suggestion mode preference
+	suggestionMode := os.Getenv("MAILOS_SUGGESTION_MODE")
 	
-	input = strings.TrimSpace(input)
-	
-	// Handle empty input
-	if input == "" {
-		return nil
-	}
-	
-	// Check if it's a command or show command menu
-	if input == "/" {
-		// Show command selection menu
-		fmt.Println("\n📋 Available Commands:")
-		fmt.Println("Debug: About to call showCommandMenu()")
-		err := showCommandMenu()
-		if err != nil {
-			fmt.Printf("Error from showCommandMenu: %v\n", err)
-		}
-		return err
-	} else if strings.HasPrefix(input, "/") {
-		// Direct command execution
-		return executeCommand(input)
-	} else {
-		// Process as AI query
-		if config.DefaultAICLI == "" || config.DefaultAICLI == "none" {
-			fmt.Println("\n⚠️  No AI provider configured.")
-			setupPrompt := promptui.Select{
-				Label: "Would you like to set up an AI provider now?",
-				Items: []string{"Yes, set up AI provider", "No, continue without AI"},
-			}
-			idx, _, err := setupPrompt.Run()
-			if err == nil && idx == 0 {
-				return SelectAndConfigureAIProvider()
-			}
-			return nil
-		}
-		
-		fmt.Printf("\n🤔 Processing: %s\n\n", input)
-		return InvokeAIProvider(input)
+	switch suggestionMode {
+	case "dynamic":
+		// Dynamic filtering as you type
+		return InteractiveModeWithDynamicSuggestions(config)
+	case "simple":
+		// Simple Enter for suggestions
+		return EnhancedInteractiveMode(config)
+	case "live":
+		// Live input with suggestions
+		return EnhancedInteractiveModeV2(config)
+	case "clean":
+		// Cleanest implementation
+		return CleanInteractiveMode(config)
+	default:
+		// Default to dynamic mode with live suggestions
+		return InteractiveModeWithDynamicSuggestions(config)
 	}
 }
 
@@ -249,6 +235,7 @@ EMAILOS HELP
 
 QUICK START:
   • Type any question to ask your AI assistant
+  • Type "@" to tag files/folders from current directory
   • Type "/" to see available commands
   • Type "/command" to execute directly
   • Press Ctrl+C to go back
@@ -277,16 +264,19 @@ AI QUERIES:
 KEYBOARD SHORTCUTS:
   • Enter      - Submit query or select option
   • ESC ESC     - Clear current input (press ESC twice quickly)
+  • @          - Show file/folder autocomplete
   • /          - Show command menu
-  • ↑↓         - Navigate menu options
+  • ↑↓         - Navigate menu options (also in @ mode)
+  • Tab        - Auto-complete selected file (in @ mode)
+  • ESC        - Cancel autocomplete (in @ mode)
   • Ctrl+C     - Cancel/Go back
   • Ctrl+D     - Exit (when input is empty)
   • Backspace  - Delete character
-  • Tab        - Auto-complete (where available)
 
 TIPS:
   • Configure AI provider for best experience
   • Email templates support Markdown formatting
+  • Use @ to quickly reference files in your queries
   • Use /provider if AI is not configured
   • Commands can be typed directly (e.g., /read)
 
@@ -301,9 +291,9 @@ TIPS:
 	return nil
 }
 
-// GetInputWithEscapeClear is deprecated - use ReadLineWithArrows instead
+// GetInputWithEscapeClear is deprecated - use ReadLineWithFileAutocomplete instead
 // Kept for backward compatibility
 func GetInputWithEscapeClear() string {
-	return ReadLineWithArrows("▸ ")
+	return ReadLineWithFileAutocomplete("▸ ")
 }
 
