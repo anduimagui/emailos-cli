@@ -304,6 +304,7 @@ func GetConfigLocation() string {
 }
 
 // GetAllAccounts returns all available email accounts from home directory config only
+// This includes provider main accounts and sub-email addresses
 func GetAllAccounts(config *Config) []AccountConfig {
 	accounts := []AccountConfig{}
 	accountMap := make(map[string]AccountConfig) // Use map to avoid duplicates
@@ -344,9 +345,12 @@ func GetAllAccounts(config *Config) []AccountConfig {
 		return accounts
 	}
 	
-	// Add main account
+	// Group accounts by provider to identify main vs sub-emails
+	providerGroups := make(map[string][]AccountConfig)
+	
+	// Add main account as provider main account
 	if globalConfig.Email != "" {
-		accountMap[globalConfig.Email] = AccountConfig{
+		mainAcc := AccountConfig{
 			Email:        globalConfig.Email,
 			Provider:     globalConfig.Provider,
 			Password:     globalConfig.Password,
@@ -355,51 +359,94 @@ func GetAllAccounts(config *Config) []AccountConfig {
 			ProfileImage: globalConfig.ProfileImage,
 			Label:        "Primary",
 		}
+		providerGroups[globalConfig.Provider] = append(providerGroups[globalConfig.Provider], mainAcc)
+		accountMap[globalConfig.Email] = mainAcc
 	}
 	
-	// Add from email if different
-	if globalConfig.FromEmail != "" && globalConfig.FromEmail != globalConfig.Email {
-		accountMap[globalConfig.FromEmail] = AccountConfig{
-			Email:        globalConfig.FromEmail,
-			Provider:     globalConfig.Provider,
-			Password:     globalConfig.Password,
-			FromName:     globalConfig.FromName,
-			FromEmail:    globalConfig.FromEmail,
-			ProfileImage: globalConfig.ProfileImage,
-			Label:        "From",
-		}
-	}
-	
-	// Add additional accounts from accounts array
+	// Process additional accounts from accounts array
 	for _, acc := range globalConfig.Accounts {
-		if _, exists := accountMap[acc.Email]; !exists {
-			if acc.Label == "" {
+		// Skip if already exists (avoid duplicates)
+		if _, exists := accountMap[acc.Email]; exists {
+			continue
+		}
+		
+		// Inherit password and provider from main account if not specified
+		if acc.Password == "" && acc.Provider == globalConfig.Provider {
+			acc.Password = globalConfig.Password
+		}
+		if acc.Provider == "" {
+			acc.Provider = globalConfig.Provider
+		}
+		
+		// Set label based on whether it's same provider as main or different
+		if acc.Label == "" {
+			if acc.Provider == globalConfig.Provider {
+				acc.Label = "Sub-email"
+			} else {
 				acc.Label = "Account"
 			}
-			accountMap[acc.Email] = acc
+		}
+		
+		providerGroups[acc.Provider] = append(providerGroups[acc.Provider], acc)
+		accountMap[acc.Email] = acc
+	}
+	
+	// Add from email as sub-email if different from main email
+	if globalConfig.FromEmail != "" && globalConfig.FromEmail != globalConfig.Email {
+		if _, exists := accountMap[globalConfig.FromEmail]; !exists {
+			fromAcc := AccountConfig{
+				Email:        globalConfig.FromEmail,
+				Provider:     globalConfig.Provider,
+				Password:     globalConfig.Password,
+				FromName:     globalConfig.FromName,
+				FromEmail:    globalConfig.FromEmail,
+				ProfileImage: globalConfig.ProfileImage,
+				Label:        "Sub-email",
+			}
+			providerGroups[globalConfig.Provider] = append(providerGroups[globalConfig.Provider], fromAcc)
+			accountMap[globalConfig.FromEmail] = fromAcc
 		}
 	}
 	
-	// Convert map to slice and sort
+	// Sort accounts: Primary first, then by provider groups
 	var primaryAccount *AccountConfig
-	var otherAccounts []AccountConfig
+	var providerAccounts []AccountConfig
 	
+	// Find primary account
 	for _, acc := range accountMap {
-		// Check if this is the primary/active account
 		if acc.Email == globalConfig.Email || acc.Label == "Primary" {
 			primaryAccount = &acc
-		} else {
-			otherAccounts = append(otherAccounts, acc)
+			break
 		}
 	}
 	
-	// Add primary account first if it exists
+	// Add primary account first
 	if primaryAccount != nil {
 		accounts = append(accounts, *primaryAccount)
 	}
 	
-	// Add all other accounts
-	accounts = append(accounts, otherAccounts...)
+	// Add sub-emails from the same provider as primary
+	if primaryAccount != nil {
+		primaryProviderAccounts := providerGroups[primaryAccount.Provider]
+		for _, acc := range primaryProviderAccounts {
+			if acc.Email != primaryAccount.Email { // Skip primary, already added
+				providerAccounts = append(providerAccounts, acc)
+			}
+		}
+	}
+	
+	// Add accounts from other providers
+	for provider, providerAccs := range providerGroups {
+		if primaryAccount != nil && provider == primaryAccount.Provider {
+			continue // Already processed above
+		}
+		for _, acc := range providerAccs {
+			providerAccounts = append(providerAccounts, acc)
+		}
+	}
+	
+	// Add all provider accounts to final list
+	accounts = append(accounts, providerAccounts...)
 	
 	return accounts
 }
@@ -506,6 +553,107 @@ func AddAccount(config *Config, account AccountConfig) error {
 	// Add new account
 	config.Accounts = append(config.Accounts, account)
 	return SaveConfig(config)
+}
+
+// SetLocalAccountPreference sets the preferred account for the current local directory
+// This creates or updates a local .email/config.json with the active_account setting
+func SetLocalAccountPreference(accountEmail string) error {
+	// First validate that the account exists
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %v", err)
+	}
+	
+	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+	globalConfig, err := loadConfigFromPath(globalConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to load global configuration: %v", err)
+	}
+	
+	// Verify account exists
+	accountFound := false
+	var selectedAccount AccountConfig
+	accounts := GetAllAccounts(globalConfig)
+	for _, acc := range accounts {
+		if acc.Email == accountEmail {
+			accountFound = true
+			selectedAccount = acc
+			break
+		}
+	}
+	
+	if !accountFound {
+		return fmt.Errorf("account %s not found", accountEmail)
+	}
+	
+	// Create local .email directory if it doesn't exist
+	localConfigDir := ".email"
+	if err := os.MkdirAll(localConfigDir, 0700); err != nil {
+		return fmt.Errorf("failed to create local .email directory: %v", err)
+	}
+	
+	// Load existing local config or create new one
+	localConfigPath := filepath.Join(localConfigDir, "config.json")
+	var localConfig Config
+	
+	// Try to load existing local config
+	existingData, err := os.ReadFile(localConfigPath)
+	if err == nil {
+		// Parse existing config, ignore errors to start fresh if corrupted
+		json.Unmarshal(existingData, &localConfig)
+	}
+	
+	// Update the local config with the selected account as active
+	localConfig.ActiveAccount = accountEmail
+	localConfig.FromEmail = selectedAccount.FromEmail
+	if localConfig.FromEmail == "" {
+		localConfig.FromEmail = accountEmail
+	}
+	localConfig.FromName = selectedAccount.FromName
+	
+	// Save the local config
+	data, err := json.MarshalIndent(localConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal local config: %v", err)
+	}
+	
+	if err := os.WriteFile(localConfigPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write local config: %v", err)
+	}
+	
+	// Ensure .gitignore includes .email
+	if err := EnsureGitIgnore(); err != nil {
+		// Don't fail, just warn
+		fmt.Printf("Note: Could not update .gitignore: %v\n", err)
+	}
+	
+	return nil
+}
+
+// GetLocalAccountPreference returns the locally configured account preference if it exists
+func GetLocalAccountPreference() string {
+	localConfigPath := filepath.Join(".email", "config.json")
+	data, err := os.ReadFile(localConfigPath)
+	if err != nil {
+		return ""
+	}
+	
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return ""
+	}
+	
+	// Return active account if set
+	if config.ActiveAccount != "" {
+		return config.ActiveAccount
+	}
+	
+	// Fall back to FromEmail if set
+	if config.FromEmail != "" {
+		return config.FromEmail
+	}
+	
+	return ""
 }
 
 // GetSMTPSettings returns SMTP configuration for the given provider

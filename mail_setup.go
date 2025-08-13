@@ -32,9 +32,21 @@ func InitializeMailSetup(accountEmail string) (*MailSetup, error) {
 	var config *Config
 	var err error
 	
-	// Check for session default account if no account specified
+	// Priority order for account selection:
+	// 1. Explicitly specified account (command line --account flag)
+	// 2. Local folder preference (.email/config.json active_account)
+	// 3. Session default (MAILOS_SESSION_ACCOUNT environment variable)
+	// 4. Default config
+	
 	if accountEmail == "" {
-		accountEmail = GetSessionDefaultAccount()
+		// Check for local folder preference first
+		localAccount := GetLocalAccountPreference()
+		if localAccount != "" {
+			accountEmail = localAccount
+		} else {
+			// Fall back to session default
+			accountEmail = GetSessionDefaultAccount()
+		}
 	}
 	
 	// Load configuration for specific account or default
@@ -50,8 +62,10 @@ func InitializeMailSetup(accountEmail string) (*MailSetup, error) {
 			return nil, fmt.Errorf("account '%s' not found and no accounts configured", accountEmail)
 		}
 		
-		// Set as session default for subsequent commands
-		SetSessionDefaultAccount(accountEmail)
+		// Set as session default for subsequent commands (but don't override local preference)
+		if GetLocalAccountPreference() == "" {
+			SetSessionDefaultAccount(accountEmail)
+		}
 	} else {
 		config, err = LoadConfig()
 		if err != nil {

@@ -3,6 +3,7 @@ package mailos
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -73,7 +74,7 @@ type command struct {
 
 func initialModel() model {
 	ti := textinput.New()
-	ti.Placeholder = "Ask me anything or type / for commands, @ for files..."
+	ti.Placeholder = "Ask me anything or type / for commands, @ for files (searches subdirs)..."
 	ti.Focus()
 	ti.CharLimit = 500
 	ti.Width = 80
@@ -206,14 +207,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+		case tea.KeyCtrlS:
+			// Ctrl+S for permanent local account setting
+			if m.showingAccountSelector && m.selectedIdx < len(m.accounts) {
+				selectedEmail := m.accounts[m.selectedIdx].Email
+				
+				// Permanently set account in local .email/config.json
+				err := SetLocalAccountPreference(selectedEmail)
+				if err == nil {
+					m.showingAccountSelector = false
+					m.mode = normalMode
+					m.selectedIdx = 0
+					
+					// Force a refresh to update the display
+					return m, tea.ClearScreen
+				} else {
+					// Handle error
+					m.showingAccountSelector = false
+					m.mode = normalMode
+					m.selectedIdx = 0
+					fmt.Printf("\n✗ Error setting local account: %v\n", err)
+				}
+				return m, nil
+			}
+			
 		case tea.KeyEnter:
 			// Handle account selector
 			if m.showingAccountSelector {
 				if m.selectedIdx < len(m.accounts) {
-					// Switch to selected account for sending and set as session default
 					selectedEmail := m.accounts[m.selectedIdx].Email
 					
-					// Initialize mail setup with the selected account
+					// Session-only: Switch to selected account for sending
 					_, err := InitializeMailSetup(selectedEmail)
 					if err == nil {
 						// The InitializeMailSetup already sets session default
@@ -366,11 +390,19 @@ func (m model) View() string {
 	// Header with auth info
 	config, _ := LoadConfig()
 	
-	// Check for session account to display in "Sending as"
+	// Check for account preference (local folder or session)
+	localAccount := GetLocalAccountPreference()
 	sessionAccount := GetSessionDefaultAccount()
+	
 	sendingAs := config.FromEmail
-	if sessionAccount != "" {
+	accountSource := ""
+	
+	if localAccount != "" {
+		sendingAs = localAccount
+		accountSource = " (local)"
+	} else if sessionAccount != "" {
 		sendingAs = sessionAccount
+		accountSource = " (session)"
 	} else if sendingAs == "" {
 		sendingAs = config.Email
 	}
@@ -386,10 +418,7 @@ func (m model) View() string {
 	
 	// Second line: Always show "Sending as" to indicate which account will be used
 	if sendingAs != "" {
-		fromLine := fmt.Sprintf("%s Sending as: %s", IconFromEmail, sendingAs)
-		if sessionAccount != "" {
-			fromLine += " (session)"
-		}
+		fromLine := fmt.Sprintf("%s Sending as: %s%s", IconFromEmail, sendingAs, accountSource)
 		headerLines = append(headerLines, fromLine)
 	}
 	
@@ -446,8 +475,8 @@ func (m model) View() string {
 			}
 
 		case fileMode:
-			s.WriteString(helpStyle.Render("Files (↑↓ to navigate, Tab to autocomplete):") + "\n\n")
-			maxShow := 10
+			s.WriteString(helpStyle.Render("Files & Folders (↑↓ to navigate, Tab to autocomplete):") + "\n\n")
+			maxShow := 15 // Increased to show more files
 			start := 0
 			if m.selectedIdx >= maxShow {
 				start = m.selectedIdx - maxShow + 1
@@ -461,11 +490,30 @@ func (m model) View() string {
 					prefix = selectedStyle.Render("▸ ")
 					style = selectedStyle
 				}
-				s.WriteString(fmt.Sprintf("%s%s\n", prefix, style.Render(m.files[i])))
+				
+				// Format file path for display
+				filePath := m.files[i]
+				icon := "📄"
+				if strings.HasSuffix(filePath, "/") {
+					icon = "📁"
+				} else if strings.HasSuffix(filePath, ".md") {
+					icon = "📝"
+				} else if strings.HasSuffix(filePath, ".go") || strings.HasSuffix(filePath, ".py") || 
+				          strings.HasSuffix(filePath, ".js") || strings.HasSuffix(filePath, ".ts") {
+					icon = "💻"
+				} else if strings.HasSuffix(filePath, ".json") || strings.HasSuffix(filePath, ".yaml") || 
+				          strings.HasSuffix(filePath, ".yml") || strings.HasSuffix(filePath, ".toml") {
+					icon = "⚙️"
+				}
+				
+				s.WriteString(fmt.Sprintf("%s%s %s\n", prefix, icon, style.Render(filePath)))
 			}
 			
 			if len(m.files) > maxShow {
-				s.WriteString(helpStyle.Render(fmt.Sprintf("\n  ... and %d more files", len(m.files)-maxShow)) + "\n")
+				remaining := len(m.files) - end
+				if remaining > 0 {
+					s.WriteString(helpStyle.Render(fmt.Sprintf("\n  ... and %d more files/folders", remaining)) + "\n")
+				}
 			}
 		}
 	} else {
@@ -476,32 +524,68 @@ func (m model) View() string {
 	return boxStyle.Render(s.String())
 }
 
-// renderAccountSelector renders the account selection UI
+// renderAccountSelector renders the account selection UI with provider grouping
 func (m model) renderAccountSelector() string {
 	var s strings.Builder
 	
 	// Header
 	s.WriteString(titleStyle.Render("📬 Select Email Account") + "\n\n")
 	
-	// Show account list
+	// Group accounts by provider for display
+	var currentProvider string
+	var isFirstInGroup bool = true
+	
+	// Show account list with provider grouping
 	for i, acc := range m.accounts {
 		cursor := "  "
 		if i == m.selectedIdx {
 			cursor = selectedStyle.Render("▸ ")
 		}
 		
-		label := acc.Email
-		if acc.Label != "" {
-			label = fmt.Sprintf("%s (%s)", acc.Email, acc.Label)
+		// Show provider header when switching providers
+		if acc.Provider != currentProvider {
+			if !isFirstInGroup {
+				s.WriteString("\n") // Add spacing between provider groups
+			}
+			currentProvider = acc.Provider
+			providerName := GetProviderName(acc.Provider)
+			providerHeader := fmt.Sprintf("── %s ──", providerName)
+			s.WriteString(helpStyle.Render(providerHeader) + "\n")
+			isFirstInGroup = false
 		}
 		
-		if i == m.selectedIdx {
-			label = selectedStyle.Render(label)
+		// Format account display with indentation and sub-email indicators
+		var displayText string
+		var prefix string
+		
+		if acc.Label == "Primary" {
+			prefix = "🏠 "
+			displayText = fmt.Sprintf("%s%s", prefix, acc.Email)
+		} else if acc.Label == "Sub-email" || (acc.Provider == currentProvider && acc.Label != "Account") {
+			prefix = "  ↳ "
+			displayText = fmt.Sprintf("%s%s", prefix, acc.Email)
 		} else {
-			label = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render(label)
+			prefix = "📧 "
+			if acc.Label != "" && acc.Label != "Account" {
+				displayText = fmt.Sprintf("%s%s (%s)", prefix, acc.Email, acc.Label)
+			} else {
+				displayText = fmt.Sprintf("%s%s", prefix, acc.Email)
+			}
 		}
 		
-		s.WriteString(fmt.Sprintf("%s%s\n", cursor, label))
+		// Apply styling
+		if i == m.selectedIdx {
+			displayText = selectedStyle.Render(displayText)
+		} else {
+			displayText = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render(displayText)
+		}
+		
+		s.WriteString(fmt.Sprintf("%s%s\n", cursor, displayText))
+	}
+	
+	// Add spacing before "Add New Account" option
+	if len(m.accounts) > 0 {
+		s.WriteString("\n")
 	}
 	
 	// Add "Add New Account" option
@@ -519,7 +603,8 @@ func (m model) renderAccountSelector() string {
 	s.WriteString(fmt.Sprintf("%s%s\n", cursor, addNewText))
 	
 	// Help text
-	s.WriteString("\n" + helpStyle.Render("↑↓ Navigate • Enter: Select • ESC: Cancel") + "\n")
+	s.WriteString("\n" + helpStyle.Render("↑↓ Navigate • Enter: Session • Ctrl+S: Local Permanent • ESC: Cancel") + "\n")
+	s.WriteString(helpStyle.Render("🏠 Main Account • ↳ Sub-email • 📧 Other Provider") + "\n")
 	
 	return boxStyle.Render(s.String())
 }
@@ -622,23 +707,70 @@ func InteractiveModeWithBubbleTea() error {
 	}
 }
 
-// getLocalFiles returns a list of files and directories in the current directory
+// getLocalFiles returns a list of files recursively from the current directory
 func getLocalFiles() []string {
 	var files []string
+	maxDepth := 3 // Limit recursion depth for performance
 	
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		return files
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() {
-			name += "/"
+	// Walk through directory tree
+	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip files with errors
 		}
-		files = append(files, name)
+		
+		// Skip hidden files/directories and common ignore patterns
+		if strings.HasPrefix(info.Name(), ".") || 
+		   strings.HasPrefix(path, ".git/") ||
+		   strings.HasPrefix(path, "node_modules/") ||
+		   strings.HasPrefix(path, "vendor/") ||
+		   strings.HasPrefix(path, "__pycache__/") ||
+		   strings.HasPrefix(path, ".venv/") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		
+		// Check depth limit
+		depth := strings.Count(path, string(os.PathSeparator))
+		if depth > maxDepth {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		
+		// Skip the root directory itself
+		if path == "." {
+			return nil
+		}
+		
+		// Add file or directory to list
+		if info.IsDir() {
+			files = append(files, path+"/")
+		} else {
+			files = append(files, path)
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		// Fallback to simple directory listing if walk fails
+		entries, err := os.ReadDir(".")
+		if err != nil {
+			return files
+		}
+		
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() {
+				name += "/"
+			}
+			files = append(files, name)
+		}
 	}
-
+	
 	return files
 }
 
