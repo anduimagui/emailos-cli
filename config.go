@@ -303,82 +303,189 @@ func GetConfigLocation() string {
 	return "global: " + filepath.Join(homeDir, ".email", "config.json")
 }
 
-// GetAllAccounts returns all available email accounts from config
+// GetAllAccounts returns all available email accounts from home directory config only
 func GetAllAccounts(config *Config) []AccountConfig {
 	accounts := []AccountConfig{}
+	accountMap := make(map[string]AccountConfig) // Use map to avoid duplicates
 	
-	// Add main account if configured
-	if config.Email != "" {
-		mainAccount := AccountConfig{
-			Email:        config.Email,
-			Provider:     config.Provider,
-			Password:     config.Password,
-			FromName:     config.FromName,
-			FromEmail:    config.FromEmail,
-			ProfileImage: config.ProfileImage,
-			Label:        "Main",
+	// Always load accounts from home directory config (not local)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// If can't get home dir, use the provided config as fallback
+		if config != nil && config.Email != "" {
+			return []AccountConfig{{
+				Email:        config.Email,
+				Provider:     config.Provider,
+				Password:     config.Password,
+				FromName:     config.FromName,
+				FromEmail:    config.FromEmail,
+				ProfileImage: config.ProfileImage,
+				Label:        "Current",
+			}}
 		}
-		accounts = append(accounts, mainAccount)
+		return accounts
 	}
 	
-	// Add from email if different from main
-	if config.FromEmail != "" && config.FromEmail != config.Email {
-		fromAccount := AccountConfig{
-			Email:        config.FromEmail,
-			Provider:     config.Provider,
-			Password:     config.Password,
-			FromName:     config.FromName,
-			FromEmail:    config.FromEmail,
-			ProfileImage: config.ProfileImage,
+	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+	globalConfig, err := loadConfigFromPath(globalConfigPath)
+	if err != nil || globalConfig == nil {
+		// If no global config, use the provided config as fallback
+		if config != nil && config.Email != "" {
+			return []AccountConfig{{
+				Email:        config.Email,
+				Provider:     config.Provider,
+				Password:     config.Password,
+				FromName:     config.FromName,
+				FromEmail:    config.FromEmail,
+				ProfileImage: config.ProfileImage,
+				Label:        "Current",
+			}}
+		}
+		return accounts
+	}
+	
+	// Add main account
+	if globalConfig.Email != "" {
+		accountMap[globalConfig.Email] = AccountConfig{
+			Email:        globalConfig.Email,
+			Provider:     globalConfig.Provider,
+			Password:     globalConfig.Password,
+			FromName:     globalConfig.FromName,
+			FromEmail:    globalConfig.FromEmail,
+			ProfileImage: globalConfig.ProfileImage,
+			Label:        "Primary",
+		}
+	}
+	
+	// Add from email if different
+	if globalConfig.FromEmail != "" && globalConfig.FromEmail != globalConfig.Email {
+		accountMap[globalConfig.FromEmail] = AccountConfig{
+			Email:        globalConfig.FromEmail,
+			Provider:     globalConfig.Provider,
+			Password:     globalConfig.Password,
+			FromName:     globalConfig.FromName,
+			FromEmail:    globalConfig.FromEmail,
+			ProfileImage: globalConfig.ProfileImage,
 			Label:        "From",
 		}
-		accounts = append(accounts, fromAccount)
 	}
 	
-	// Add additional accounts
-	for _, acc := range config.Accounts {
-		// Skip duplicates
-		isDuplicate := false
-		for _, existing := range accounts {
-			if existing.Email == acc.Email {
-				isDuplicate = true
-				break
+	// Add additional accounts from accounts array
+	for _, acc := range globalConfig.Accounts {
+		if _, exists := accountMap[acc.Email]; !exists {
+			if acc.Label == "" {
+				acc.Label = "Account"
 			}
-		}
-		if !isDuplicate {
-			accounts = append(accounts, acc)
+			accountMap[acc.Email] = acc
 		}
 	}
+	
+	// Convert map to slice and sort
+	var primaryAccount *AccountConfig
+	var otherAccounts []AccountConfig
+	
+	for _, acc := range accountMap {
+		// Check if this is the primary/active account
+		if acc.Email == globalConfig.Email || acc.Label == "Primary" {
+			primaryAccount = &acc
+		} else {
+			otherAccounts = append(otherAccounts, acc)
+		}
+	}
+	
+	// Add primary account first if it exists
+	if primaryAccount != nil {
+		accounts = append(accounts, *primaryAccount)
+	}
+	
+	// Add all other accounts
+	accounts = append(accounts, otherAccounts...)
 	
 	return accounts
 }
 
-// SwitchAccount switches the active email account
+// fileExists checks if a file exists
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// LoadAccountConfig loads configuration for a specific email account from home directory
+func LoadAccountConfig(accountEmail string) (*Config, error) {
+	if accountEmail == "" {
+		return LoadConfig()
+	}
+	
+	// Load home directory config
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %v", err)
+	}
+	
+	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+	globalConfig, err := loadConfigFromPath(globalConfigPath)
+	if err != nil || globalConfig == nil {
+		return nil, fmt.Errorf("failed to load configuration from home directory: %v", err)
+	}
+	
+	// Get all accounts
+	accounts := GetAllAccounts(globalConfig)
+	
+	// Find the requested account
+	for _, acc := range accounts {
+		if acc.Email == accountEmail {
+			// Create a new config with the selected account as primary
+			config := &Config{
+				Provider:     acc.Provider,
+				Email:        acc.Email,
+				Password:     acc.Password,
+				FromName:     acc.FromName,
+				FromEmail:    acc.FromEmail,
+				ProfileImage: acc.ProfileImage,
+				LicenseKey:   globalConfig.LicenseKey,
+				DefaultAICLI: globalConfig.DefaultAICLI,
+				ActiveAccount: acc.Email,
+				Accounts:     globalConfig.Accounts,
+			}
+			
+			// If account doesn't have all fields, inherit from global config
+			if config.Provider == "" {
+				config.Provider = globalConfig.Provider
+			}
+			if config.Password == "" {
+				config.Password = globalConfig.Password
+			}
+			if config.FromEmail == "" {
+				config.FromEmail = acc.Email
+			}
+			
+			return config, nil
+		}
+	}
+	
+	return nil, fmt.Errorf("account %s not found in configuration", accountEmail)
+}
+
+// SwitchAccount switches the active email account for sending
 func SwitchAccount(config *Config, accountEmail string) error {
 	accounts := GetAllAccounts(config)
 	
 	for _, acc := range accounts {
 		if acc.Email == accountEmail {
-			// Update main config with selected account
-			config.Email = acc.Email
-			if acc.Provider != "" {
-				config.Provider = acc.Provider
-			}
-			if acc.Password != "" {
-				config.Password = acc.Password
-			}
+			// Update FromEmail to send as the selected account
+			config.FromEmail = acc.Email
+			
+			// Also update FromName if the account has one
 			if acc.FromName != "" {
 				config.FromName = acc.FromName
 			}
-			if acc.FromEmail != "" {
-				config.FromEmail = acc.FromEmail
-			}
-			if acc.ProfileImage != "" {
-				config.ProfileImage = acc.ProfileImage
-			}
+			
+			// Set as active account
 			config.ActiveAccount = accountEmail
 			
-			return SaveConfig(config)
+			// Don't save to file - this is session-only
+			// The change persists in memory for the current session
+			return nil
 		}
 	}
 	

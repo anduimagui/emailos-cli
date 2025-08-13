@@ -210,12 +210,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Handle account selector
 			if m.showingAccountSelector {
 				if m.selectedIdx < len(m.accounts) {
-					// Switch to selected account
-					config, _ := LoadConfig()
-					SwitchAccount(config, m.accounts[m.selectedIdx].Email)
-					m.showingAccountSelector = false
-					m.mode = normalMode
-					m.selectedIdx = 0
+					// Switch to selected account for sending and set as session default
+					selectedEmail := m.accounts[m.selectedIdx].Email
+					
+					// Initialize mail setup with the selected account
+					_, err := InitializeMailSetup(selectedEmail)
+					if err == nil {
+						// The InitializeMailSetup already sets session default
+						m.showingAccountSelector = false
+						m.mode = normalMode
+						m.selectedIdx = 0
+						
+						// Force a refresh to update the display
+						return m, tea.ClearScreen
+					} else {
+						// Handle error
+						m.showingAccountSelector = false
+						m.mode = normalMode
+						m.selectedIdx = 0
+						fmt.Printf("\n✗ Error switching account: %v\n", err)
+					}
 				} else {
 					// Add new account - show separate UI
 					m.result = "/add-account"
@@ -351,6 +365,16 @@ func (m model) View() string {
 
 	// Header with auth info
 	config, _ := LoadConfig()
+	
+	// Check for session account to display in "Sending as"
+	sessionAccount := GetSessionDefaultAccount()
+	sendingAs := config.FromEmail
+	if sessionAccount != "" {
+		sendingAs = sessionAccount
+	} else if sendingAs == "" {
+		sendingAs = config.Email
+	}
+	
 	var headerLines []string
 	
 	// First line: Account and AI provider with hint about clicking
@@ -360,9 +384,12 @@ func (m model) View() string {
 		headerLines = append(headerLines, headerLine)
 	}
 	
-	// Second line: From email if different from account
-	if config.FromEmail != "" && config.FromEmail != config.Email {
-		fromLine := fmt.Sprintf("%s Sending as: %s", IconFromEmail, config.FromEmail)
+	// Second line: Always show "Sending as" to indicate which account will be used
+	if sendingAs != "" {
+		fromLine := fmt.Sprintf("%s Sending as: %s", IconFromEmail, sendingAs)
+		if sessionAccount != "" {
+			fromLine += " (session)"
+		}
 		headerLines = append(headerLines, fromLine)
 	}
 	

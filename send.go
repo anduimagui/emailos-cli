@@ -40,16 +40,23 @@ type SavedEmail struct {
 }
 
 func Send(msg *EmailMessage) error {
+	return SendWithAccount(msg, "")
+}
+
+// SendWithAccount sends an email using a specific account
+func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 	// For now, we'll skip attachment support in the simple implementation
 	if len(msg.Attachments) > 0 {
 		return fmt.Errorf("attachment support not yet implemented")
 	}
 
-	// Otherwise use the simple implementation
-	config, err := LoadConfig()
+	// Initialize mail setup with optional account
+	setup, err := InitializeMailSetup(accountEmail)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %v", err)
+		return fmt.Errorf("failed to initialize mail setup: %v", err)
 	}
+	
+	config := setup.Config
 
 	// Prepare email headers and body
 	// Use FromEmail if specified, otherwise use the account email
