@@ -3,6 +3,7 @@ package mailos
 import (
 	"crypto/tls"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -161,4 +162,53 @@ func ReadSentEmails(opts SentOptions) ([]*Email, error) {
 	}
 
 	return emails, nil
+}
+
+// FormatSentEmailList formats sent emails with links to open in desktop app
+func FormatSentEmailList(emails []*Email) string {
+	if len(emails) == 0 {
+		return "No sent emails found."
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("\nFound %d sent email(s)\n", len(emails)))
+	result.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	
+	for i, email := range emails {
+		result.WriteString(fmt.Sprintf("\n%d. From: %s\n", i+1, email.From))
+		
+		// Add recipients
+		if len(email.To) > 0 {
+			result.WriteString(fmt.Sprintf("   To: %s\n", strings.Join(email.To, ", ")))
+		}
+		
+		result.WriteString(fmt.Sprintf("   Subject: %s\n", email.Subject))
+		result.WriteString(fmt.Sprintf("   Date: %s\n", email.Date.Format("Jan 2, 2006 3:04 PM")))
+		
+		// Add link to open in desktop app
+		result.WriteString(fmt.Sprintf("   📧 Open: mailos open --id %d\n", email.ID))
+		
+		// Show preview of body
+		preview := email.Body
+		if len(preview) > 100 {
+			preview = preview[:100] + "..."
+		}
+		preview = strings.ReplaceAll(preview, "\n", " ")
+		preview = strings.TrimSpace(preview)
+		if preview != "" {
+			result.WriteString(fmt.Sprintf("   Preview: %s\n", preview))
+		}
+		
+		if len(email.Attachments) > 0 {
+			result.WriteString(fmt.Sprintf("   Attachments: %s\n", strings.Join(email.Attachments, ", ")))
+		}
+		
+		result.WriteString("   ──────────────────────────────────────────\n")
+	}
+	
+	result.WriteString("\n💡 Tips:\n")
+	result.WriteString("• Use 'mailos open --id <number>' to open an email in your desktop mail app\n")
+	result.WriteString("• Emails are automatically saved to .email/sent/ folder\n")
+	
+	return result.String()
 }

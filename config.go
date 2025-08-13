@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var APP_SITE = "email-os.com"
+var APP_SITE = AppSite // Using constant from constants.go
 
 type Config struct {
 	Provider      string `json:"provider"`
@@ -27,6 +27,19 @@ type Config struct {
 	AutoSync      bool   `json:"auto_sync,omitempty"`
 	SyncDir       string `json:"sync_dir,omitempty"`
 	LocalStorageDir string `json:"local_storage_dir,omitempty"`
+	SignatureOverride string `json:"signature_override,omitempty"`
+	Accounts      []AccountConfig `json:"accounts,omitempty"`
+	ActiveAccount string `json:"active_account,omitempty"`
+}
+
+type AccountConfig struct {
+	Email        string `json:"email"`
+	Provider     string `json:"provider"`
+	Password     string `json:"password"`
+	FromName     string `json:"from_name,omitempty"`
+	FromEmail    string `json:"from_email,omitempty"`
+	ProfileImage string `json:"profile_image,omitempty"`
+	Label        string `json:"label,omitempty"`
 }
 
 // LegacyConfig represents the old config format
@@ -121,6 +134,9 @@ func LoadConfigWithInheritance() (*Config, error) {
 				}
 				if localOverrides.DefaultAICLI != "" {
 					localConfig.DefaultAICLI = localOverrides.DefaultAICLI
+				}
+				if localOverrides.SignatureOverride != "" {
+					localConfig.SignatureOverride = localOverrides.SignatureOverride
 				}
 			}
 		}
@@ -285,6 +301,104 @@ func GetConfigLocation() string {
 	
 	homeDir, _ := os.UserHomeDir()
 	return "global: " + filepath.Join(homeDir, ".email", "config.json")
+}
+
+// GetAllAccounts returns all available email accounts from config
+func GetAllAccounts(config *Config) []AccountConfig {
+	accounts := []AccountConfig{}
+	
+	// Add main account if configured
+	if config.Email != "" {
+		mainAccount := AccountConfig{
+			Email:        config.Email,
+			Provider:     config.Provider,
+			Password:     config.Password,
+			FromName:     config.FromName,
+			FromEmail:    config.FromEmail,
+			ProfileImage: config.ProfileImage,
+			Label:        "Main",
+		}
+		accounts = append(accounts, mainAccount)
+	}
+	
+	// Add from email if different from main
+	if config.FromEmail != "" && config.FromEmail != config.Email {
+		fromAccount := AccountConfig{
+			Email:        config.FromEmail,
+			Provider:     config.Provider,
+			Password:     config.Password,
+			FromName:     config.FromName,
+			FromEmail:    config.FromEmail,
+			ProfileImage: config.ProfileImage,
+			Label:        "From",
+		}
+		accounts = append(accounts, fromAccount)
+	}
+	
+	// Add additional accounts
+	for _, acc := range config.Accounts {
+		// Skip duplicates
+		isDuplicate := false
+		for _, existing := range accounts {
+			if existing.Email == acc.Email {
+				isDuplicate = true
+				break
+			}
+		}
+		if !isDuplicate {
+			accounts = append(accounts, acc)
+		}
+	}
+	
+	return accounts
+}
+
+// SwitchAccount switches the active email account
+func SwitchAccount(config *Config, accountEmail string) error {
+	accounts := GetAllAccounts(config)
+	
+	for _, acc := range accounts {
+		if acc.Email == accountEmail {
+			// Update main config with selected account
+			config.Email = acc.Email
+			if acc.Provider != "" {
+				config.Provider = acc.Provider
+			}
+			if acc.Password != "" {
+				config.Password = acc.Password
+			}
+			if acc.FromName != "" {
+				config.FromName = acc.FromName
+			}
+			if acc.FromEmail != "" {
+				config.FromEmail = acc.FromEmail
+			}
+			if acc.ProfileImage != "" {
+				config.ProfileImage = acc.ProfileImage
+			}
+			config.ActiveAccount = accountEmail
+			
+			return SaveConfig(config)
+		}
+	}
+	
+	return fmt.Errorf("account %s not found", accountEmail)
+}
+
+// AddAccount adds a new email account to the config
+func AddAccount(config *Config, account AccountConfig) error {
+	// Check if account already exists
+	for i, acc := range config.Accounts {
+		if acc.Email == account.Email {
+			// Update existing account
+			config.Accounts[i] = account
+			return SaveConfig(config)
+		}
+	}
+	
+	// Add new account
+	config.Accounts = append(config.Accounts, account)
+	return SaveConfig(config)
 }
 
 // GetSMTPSettings returns SMTP configuration for the given provider

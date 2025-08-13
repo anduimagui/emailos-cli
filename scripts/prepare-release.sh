@@ -49,7 +49,7 @@ for PLATFORM in "${PLATFORMS[@]}"; do
     fi
     
     echo "Building for $GOOS/$GOARCH..."
-    GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X main.version=v$VERSION" -o "$OUTPUT" .
+    GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X main.version=v$VERSION" -o "$OUTPUT" ./cmd/mailos
     
     # Create tar.gz archive
     tar -czf "${OUTPUT}.tar.gz" -C dist "$(basename $OUTPUT)"

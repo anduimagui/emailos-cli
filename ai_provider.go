@@ -107,10 +107,30 @@ Current Email Configuration:
 	
 	// Add current configuration info
 	if config, err := LoadConfig(); err == nil {
-		systemMessage += fmt.Sprintf("- Email: %s\n", config.Email)
+		systemMessage += fmt.Sprintf("- Active Account: %s\n", config.Email)
 		systemMessage += fmt.Sprintf("- Provider: %s\n", GetProviderName(config.Provider))
 		if config.FromName != "" {
 			systemMessage += fmt.Sprintf("- Display Name: %s\n", config.FromName)
+		}
+		if config.FromEmail != "" && config.FromEmail != config.Email {
+			systemMessage += fmt.Sprintf("- Sending As: %s\n", config.FromEmail)
+		}
+		
+		// List all available accounts
+		accounts := GetAllAccounts(config)
+		if len(accounts) > 1 {
+			systemMessage += "\nAvailable Accounts:\n"
+			for _, acc := range accounts {
+				label := ""
+				if acc.Label != "" {
+					label = fmt.Sprintf(" (%s)", acc.Label)
+				}
+				if acc.Email == config.Email {
+					systemMessage += fmt.Sprintf("- %s%s [ACTIVE]\n", acc.Email, label)
+				} else {
+					systemMessage += fmt.Sprintf("- %s%s\n", acc.Email, label)
+				}
+			}
 		}
 	}
 	

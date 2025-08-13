@@ -45,6 +45,7 @@ const (
 	normalMode inputMode = iota
 	commandMode
 	fileMode
+	accountMode
 )
 
 type model struct {
@@ -52,6 +53,7 @@ type model struct {
 	suggestions  []AISuggestion
 	commands     []command
 	files        []string
+	accounts     []AccountConfig
 	mode         inputMode
 	selectedIdx  int
 	showList     bool
@@ -60,6 +62,7 @@ type model struct {
 	result       string
 	err          error
 	quitting     bool
+	showingAccountSelector bool
 }
 
 type command struct {
@@ -127,7 +130,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyEscape:
-			if m.showList {
+			if m.showingAccountSelector {
+				m.showingAccountSelector = false
+				m.mode = normalMode
+				m.selectedIdx = 0
+			} else if m.showList {
 				m.showList = false
 				m.mode = normalMode
 				m.selectedIdx = 0
@@ -144,10 +151,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showList = false
 				m.mode = normalMode
 				m.selectedIdx = 0
+			} else if !m.showList && m.textInput.Value() == "" {
+				// Show account selector when Tab is pressed with empty input
+				config, _ := LoadConfig()
+				m.accounts = GetAllAccounts(config)
+				if len(m.accounts) > 0 {
+					m.showingAccountSelector = true
+					m.mode = accountMode
+					m.selectedIdx = 0
+				}
 			}
 
 		case tea.KeyUp:
-			if m.showList {
+			if m.showingAccountSelector {
+				m.selectedIdx--
+				if m.selectedIdx < 0 {
+					m.selectedIdx = len(m.accounts) // Include "Add New Account" option
+				}
+			} else if m.showList {
 				m.selectedIdx--
 				if m.selectedIdx < 0 {
 					switch m.mode {
@@ -162,7 +183,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyDown:
-			if m.showList {
+			if m.showingAccountSelector {
+				m.selectedIdx++
+				if m.selectedIdx > len(m.accounts) { // Include "Add New Account" option
+					m.selectedIdx = 0
+				}
+			} else if m.showList {
 				m.selectedIdx++
 				switch m.mode {
 				case normalMode:
@@ -181,6 +207,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyEnter:
+			// Handle account selector
+			if m.showingAccountSelector {
+				if m.selectedIdx < len(m.accounts) {
+					// Switch to selected account
+					config, _ := LoadConfig()
+					SwitchAccount(config, m.accounts[m.selectedIdx].Email)
+					m.showingAccountSelector = false
+					m.mode = normalMode
+					m.selectedIdx = 0
+				} else {
+					// Add new account - show separate UI
+					m.result = "/add-account"
+					m.quitting = true
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+
 			value := m.textInput.Value()
 
 			// Handle empty input - show suggestions
@@ -298,20 +342,44 @@ func (m model) View() string {
 		return ""
 	}
 
+	// If showing account selector, show it instead
+	if m.showingAccountSelector {
+		return m.renderAccountSelector()
+	}
+
 	var s strings.Builder
 
 	// Header with auth info
 	config, _ := LoadConfig()
-	var header string
+	var headerLines []string
+	
+	// First line: Account and AI provider with hint about clicking
 	if config.Email != "" {
-		header = fmt.Sprintf("Mailos | %s", config.Email)
-		if config.DefaultAICLI != "" && config.DefaultAICLI != "none" {
-			header += fmt.Sprintf(" | %s", config.DefaultAICLI)
-		}
-	} else {
-		header = "Mailos"
+		aiDisplay := getFriendlyAIName(config.DefaultAICLI)
+		headerLine := fmt.Sprintf("%s Account: %s │ %s AI: %s", IconAccount, config.Email, IconAI, aiDisplay)
+		headerLines = append(headerLines, headerLine)
 	}
-	s.WriteString(titleStyle.Render(header) + "\n\n")
+	
+	// Second line: From email if different from account
+	if config.FromEmail != "" && config.FromEmail != config.Email {
+		fromLine := fmt.Sprintf("%s Sending as: %s", IconFromEmail, config.FromEmail)
+		headerLines = append(headerLines, fromLine)
+	}
+	
+	// If no config, show default header
+	if len(headerLines) == 0 {
+		headerLines = append(headerLines, fmt.Sprintf("%s Mailos - Email Client", IconAccount))
+	}
+	
+	for _, line := range headerLines {
+		s.WriteString(titleStyle.Render(line) + "\n")
+	}
+	
+	// Add hint about account selection
+	if config.Email != "" {
+		s.WriteString(helpStyle.Render("  Press Tab to switch accounts") + "\n")
+	}
+	s.WriteString("\n")
 
 	// Input field
 	s.WriteString(m.textInput.View() + "\n")
@@ -375,9 +443,57 @@ func (m model) View() string {
 		}
 	} else {
 		// Help text when not showing list
-		s.WriteString("\n" + helpStyle.Render("Enter: submit | /: commands | @: files | Ctrl+C: cancel | Ctrl+D: exit") + "\n")
+		s.WriteString("\n" + helpStyle.Render("Enter: submit | /: commands | @: files | Tab: accounts | Ctrl+C: cancel | Ctrl+D: exit") + "\n")
 	}
 
+	return boxStyle.Render(s.String())
+}
+
+// renderAccountSelector renders the account selection UI
+func (m model) renderAccountSelector() string {
+	var s strings.Builder
+	
+	// Header
+	s.WriteString(titleStyle.Render("📬 Select Email Account") + "\n\n")
+	
+	// Show account list
+	for i, acc := range m.accounts {
+		cursor := "  "
+		if i == m.selectedIdx {
+			cursor = selectedStyle.Render("▸ ")
+		}
+		
+		label := acc.Email
+		if acc.Label != "" {
+			label = fmt.Sprintf("%s (%s)", acc.Email, acc.Label)
+		}
+		
+		if i == m.selectedIdx {
+			label = selectedStyle.Render(label)
+		} else {
+			label = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render(label)
+		}
+		
+		s.WriteString(fmt.Sprintf("%s%s\n", cursor, label))
+	}
+	
+	// Add "Add New Account" option
+	cursor := "  "
+	if m.selectedIdx == len(m.accounts) {
+		cursor = selectedStyle.Render("▸ ")
+	}
+	
+	addNewText := "➕ Add New Account"
+	if m.selectedIdx == len(m.accounts) {
+		addNewText = selectedStyle.Render(addNewText)
+	} else {
+		addNewText = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render(addNewText)
+	}
+	s.WriteString(fmt.Sprintf("%s%s\n", cursor, addNewText))
+	
+	// Help text
+	s.WriteString("\n" + helpStyle.Render("↑↓ Navigate • Enter: Select • ESC: Cancel") + "\n")
+	
 	return boxStyle.Render(s.String())
 }
 
@@ -437,6 +553,14 @@ func InteractiveModeWithBubbleTea() error {
 
 		// Handle commands
 		if strings.HasPrefix(input, "/") {
+			// Special handling for add-account command
+			if input == "/add-account" {
+				if err := handleAddAccount(); err != nil {
+					fmt.Printf("Error adding account: %v\n", err)
+				}
+				continue
+			}
+			
 			if err := executeCommand(input); err != nil {
 				if err.Error() == "exit" {
 					fmt.Println("\nGoodbye!")
@@ -491,6 +615,31 @@ func getLocalFiles() []string {
 	return files
 }
 
+// handleAddAccount handles adding a new email account
+func handleAddAccount() error {
+	email, newAccount, err := ShowAccountSelector()
+	if err != nil {
+		return err
+	}
+	
+	config, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+	
+	if newAccount != nil {
+		// Add the new account
+		return AddAccount(config, *newAccount)
+	}
+	
+	// Switch to existing account
+	if email != "" {
+		return SwitchAccount(config, email)
+	}
+	
+	return nil
+}
+
 // processFileReferences processes @ references in the input
 func processFileReferences(input string) string {
 	parts := strings.Split(input, "@")
@@ -536,4 +685,24 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// getFriendlyAIName returns a user-friendly display name for the AI provider
+func getFriendlyAIName(provider string) string {
+	switch provider {
+	case AIProviderClaudeCode:
+		return AIDisplayClaudeCode
+	case AIProviderClaudeCodeYolo:
+		return AIDisplayClaudeCodeYolo
+	case AIProviderOpenAI:
+		return AIDisplayOpenAI
+	case AIProviderGemini:
+		return AIDisplayGemini
+	case AIProviderOpenCode:
+		return AIDisplayOpenCode
+	case AIProviderNone, "":
+		return AIDisplayNone
+	default:
+		return provider
+	}
 }

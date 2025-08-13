@@ -121,7 +121,13 @@ type EmailSaveOptions struct {
 // SaveEmailsWithOptions saves emails with custom options
 func SaveEmailsWithOptions(emails []*Email, opts EmailSaveOptions) error {
 	if opts.OutputDir == "" {
-		opts.OutputDir = "emails"
+		// Use .email folder by default
+		baseDir, err := GetEmailStorageDir()
+		if err != nil {
+			opts.OutputDir = ".email"
+		} else {
+			opts.OutputDir = baseDir
+		}
 	}
 	
 	if opts.GroupBySender {

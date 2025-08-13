@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	
@@ -140,39 +139,26 @@ func DraftsCommand(opts DraftsOptions) error {
 	}
 
 	// Save drafts to both local files and IMAP Drafts folder
-	for i, draft := range drafts {
-		// Save to local .email/drafts as JSON
+	for _, draft := range drafts {
+		// Save to local .email/drafts as markdown
 		if err := saveLocalDraft(draft); err != nil {
 			fmt.Printf("⚠️  Could not save draft to local storage: %v\n", err)
 		} else {
 			fmt.Printf("✓ Saved draft to local .email/drafts folder\n")
 		}
 		
-		// Also save as markdown file if OutputDir is not the default drafts dir
-		draftsDir, _ := GetDraftsDir()
-		if opts.OutputDir != draftsDir {
-			filename := generateDraftFilename(draft.Subject, i+1)
-			filepath := filepath.Join(opts.OutputDir, filename)
-			
-			if err := saveDraftToFile(draft, filepath); err != nil {
-				return fmt.Errorf("failed to save draft %d to file: %v", i+1, err)
-			}
-			
-			fmt.Printf("✓ Created draft file: %s\n", filepath)
-		}
-		
-		// Save to IMAP Drafts folder
+		// Save to IMAP Drafts folder (without sending)
 		if err := saveDraftToIMAP(draft); err != nil {
 			// Don't fail the whole operation if IMAP save fails
 			fmt.Printf("⚠️  Could not save draft to email account: %v\n", err)
 		} else {
-			fmt.Printf("✓ Saved draft to email account's Drafts folder\n")
+			fmt.Printf("✓ Saved draft to email account's Drafts folder (not sent)\n")
 		}
 	}
 
-	fmt.Printf("\n📧 Created %d draft(s) in %s/\n", len(drafts), opts.OutputDir)
+	fmt.Printf("\n📧 Created %d draft(s) in .email/drafts folder\n", len(drafts))
 	fmt.Printf("📤 To send all drafts, run: mailos send --drafts\n")
-	fmt.Printf("📮 Drafts are also saved in your email account's Drafts folder\n")
+	fmt.Printf("📮 Drafts are also saved in your email account's Drafts folder (not sent)\n")
 	
 	return nil
 }
@@ -301,76 +287,6 @@ func createSingleDraftInteractively() (DraftEmail, error) {
 	return draft, nil
 }
 
-// generateDraftFilename creates a filename for the draft
-func generateDraftFilename(subject string, index int) string {
-	// Sanitize subject for filename
-	safe := strings.Map(func(r rune) rune {
-		if r == ' ' {
-			return '-'
-		}
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			return r
-		}
-		return -1
-	}, subject)
-	
-	if safe == "" {
-		safe = "draft"
-	}
-	
-	// Limit length
-	if len(safe) > 50 {
-		safe = safe[:50]
-	}
-	
-	timestamp := time.Now().Format("2006-01-02-150405")
-	return fmt.Sprintf("%03d-%s-%s.md", index, safe, timestamp)
-}
-
-// saveDraftToFile saves a draft email to a markdown file with frontmatter
-func saveDraftToFile(draft DraftEmail, filepath string) error {
-	file, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	
-	// Write frontmatter
-	file.WriteString("---\n")
-	file.WriteString(fmt.Sprintf("to: %s\n", strings.Join(draft.To, ", ")))
-	
-	if len(draft.CC) > 0 {
-		file.WriteString(fmt.Sprintf("cc: %s\n", strings.Join(draft.CC, ", ")))
-	}
-	
-	if len(draft.BCC) > 0 {
-		file.WriteString(fmt.Sprintf("bcc: %s\n", strings.Join(draft.BCC, ", ")))
-	}
-	
-	file.WriteString(fmt.Sprintf("subject: %s\n", draft.Subject))
-	
-	if len(draft.Attachments) > 0 {
-		file.WriteString("attachments:\n")
-		for _, attachment := range draft.Attachments {
-			file.WriteString(fmt.Sprintf("  - %s\n", attachment))
-		}
-	}
-	
-	if draft.SendAfter != nil {
-		file.WriteString(fmt.Sprintf("send_after: %s\n", draft.SendAfter.Format("2006-01-02 15:04:05")))
-	}
-	
-	if draft.Priority != "" {
-		file.WriteString(fmt.Sprintf("priority: %s\n", draft.Priority))
-	}
-	
-	file.WriteString("---\n\n")
-	
-	// Write body
-	file.WriteString(draft.Body)
-	
-	return nil
-}
 
 // saveDraftToIMAP saves a draft email to the IMAP Drafts folder
 func saveDraftToIMAP(draft DraftEmail) error {

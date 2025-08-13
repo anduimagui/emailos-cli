@@ -21,54 +21,54 @@ type Provider struct {
 }
 
 var Providers = map[string]Provider{
-	"gmail": {
+	ProviderGmail: {
 		Name:            "Gmail",
 		SMTPHost:        "smtp.gmail.com",
-		SMTPPort:        587,
+		SMTPPort:        SMTPPortTLS,
 		SMTPUseTLS:      true,
 		IMAPHost:        "imap.gmail.com",
-		IMAPPort:        993,
-		AppPasswordURL:  "https://myaccount.google.com/apppasswords",
+		IMAPPort:        IMAPPortSSL,
+		AppPasswordURL:  GmailAppPasswordURL,
 		AppPasswordHelp: "You need to enable 2-factor authentication and create an app password",
 	},
-	"fastmail": {
+	ProviderFastmail: {
 		Name:            "Fastmail",
 		SMTPHost:        "smtp.fastmail.com",
-		SMTPPort:        465,
+		SMTPPort:        SMTPPortSSL,
 		SMTPUseSSL:      true,
 		IMAPHost:        "imap.fastmail.com",
-		IMAPPort:        993,
-		AppPasswordURL:  "https://app.fastmail.com/settings/security/apps/new",
+		IMAPPort:        IMAPPortSSL,
+		AppPasswordURL:  FastmailAppPasswordURL,
 		AppPasswordHelp: "Create an app-specific password in Settings > Security > Device Passwords",
 	},
-	"zoho": {
+	ProviderZoho: {
 		Name:            "Zoho Mail",
 		SMTPHost:        "smtp.zoho.com",
-		SMTPPort:        465,
+		SMTPPort:        SMTPPortSSL,
 		SMTPUseSSL:      true,
 		IMAPHost:        "imap.zoho.com",
-		IMAPPort:        993,
-		AppPasswordURL:  "https://accounts.zoho.eu/home#security/app_password",
+		IMAPPort:        IMAPPortSSL,
+		AppPasswordURL:  ZohoAppPasswordURL,
 		AppPasswordHelp: "Generate an application-specific password in Security settings",
 	},
-	"outlook": {
+	ProviderOutlook: {
 		Name:            "Outlook/Hotmail",
 		SMTPHost:        "smtp-mail.outlook.com",
-		SMTPPort:        587,
+		SMTPPort:        SMTPPortTLS,
 		SMTPUseTLS:      true,
 		IMAPHost:        "outlook.office365.com",
-		IMAPPort:        993,
-		AppPasswordURL:  "https://account.microsoft.com/security",
+		IMAPPort:        IMAPPortSSL,
+		AppPasswordURL:  OutlookAppPasswordURL,
 		AppPasswordHelp: "Enable two-step verification and create an app password",
 	},
-	"yahoo": {
+	ProviderYahoo: {
 		Name:            "Yahoo Mail",
 		SMTPHost:        "smtp.mail.yahoo.com",
-		SMTPPort:        587,
+		SMTPPort:        SMTPPortTLS,
 		SMTPUseTLS:      true,
 		IMAPHost:        "imap.mail.yahoo.com",
-		IMAPPort:        993,
-		AppPasswordURL:  "https://login.yahoo.com/account/security",
+		IMAPPort:        IMAPPortSSL,
+		AppPasswordURL:  YahooAppPasswordURL,
 		AppPasswordHelp: "Generate an app password in Account Security settings",
 	},
 }
@@ -83,7 +83,7 @@ func GetProviderNames() []string {
 
 func GetProviderKeys() []string {
 	// Return providers in preferred order: Gmail, Outlook, Fastmail first
-	preferredOrder := []string{"gmail", "outlook", "fastmail"}
+	preferredOrder := []string{ProviderGmail, ProviderOutlook, ProviderFastmail}
 	
 	// Add remaining providers
 	otherProviders := []string{}

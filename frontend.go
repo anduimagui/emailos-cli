@@ -656,7 +656,16 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 		licenseKey = globalConfig.LicenseKey
 	}
 	
-	// Create config
+	// Load existing config to preserve accounts
+	var existingConfig *Config
+	if isLocal {
+		localConfigPath := filepath.Join(".email", "config.json")
+		existingConfig, _ = LoadConfigFromPath(localConfigPath)
+	} else {
+		existingConfig, _ = LoadConfig()
+	}
+	
+	// Create config, preserving existing accounts
 	config := &Config{
 		Provider:     selectedKey,
 		Email:        email,
@@ -665,6 +674,49 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 		FromEmail:    fromEmail,
 		DefaultAICLI: defaultAICLI,
 		LicenseKey:   licenseKey,
+		ActiveAccount: email,
+	}
+	
+	// Preserve existing accounts if they exist
+	if existingConfig != nil && len(existingConfig.Accounts) > 0 {
+		config.Accounts = existingConfig.Accounts
+		
+		// Check if we need to add/update the current account in the accounts list
+		accountFound := false
+		for i, acc := range config.Accounts {
+			if acc.Email == email {
+				// Update existing account
+				config.Accounts[i].Provider = selectedKey
+				config.Accounts[i].Password = password
+				config.Accounts[i].FromName = fromName
+				config.Accounts[i].FromEmail = fromEmail
+				accountFound = true
+				break
+			}
+		}
+		
+		// Add current account if it's not already in the list
+		if !accountFound && email != "" {
+			newAccount := AccountConfig{
+				Email:        email,
+				Provider:     selectedKey,
+				Password:     password,
+				FromName:     fromName,
+				FromEmail:    fromEmail,
+				Label:        "Configured",
+			}
+			config.Accounts = append(config.Accounts, newAccount)
+		}
+	} else if email != "" {
+		// No existing accounts, create first one
+		config.Accounts = []AccountConfig{{
+			Email:        email,
+			Provider:     selectedKey,
+			Password:     password,
+			FromName:     fromName,
+			FromEmail:    fromEmail,
+			Label:        "Primary",
+		}}
 	}
 	
 	// Save configuration

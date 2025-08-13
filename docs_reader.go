@@ -92,7 +92,7 @@ func GenerateAIInstructions() (string, error) {
 	instructions.WriteString("3. All commands return appropriate exit codes for error handling\n")
 	instructions.WriteString("4. Multiple recipients can be specified with multiple -t flags\n")
 	instructions.WriteString("5. Email bodies support Markdown formatting\n")
-	instructions.WriteString("6. Drafts are saved both locally (draft-emails/) and to IMAP Drafts folder\n")
+	instructions.WriteString("6. Drafts are saved both locally (.email/drafts/) and to IMAP Drafts folder\n")
 	instructions.WriteString("7. Use 'mailos send --drafts' to send all saved drafts\n")
 	instructions.WriteString("\n")
 	

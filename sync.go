@@ -33,7 +33,13 @@ func SyncEmails(opts SyncOptions) error {
 		if config.SyncDir != "" {
 			opts.BaseDir = config.SyncDir
 		} else {
-			opts.BaseDir = "emails"
+			// Use .email folder (same as GetEmailStorageDir)
+			baseDir, err := GetEmailStorageDir()
+			if err != nil {
+				opts.BaseDir = ".email"
+			} else {
+				opts.BaseDir = baseDir
+			}
 		}
 	}
 
@@ -42,8 +48,13 @@ func SyncEmails(opts SyncOptions) error {
 	sentDir := filepath.Join(opts.BaseDir, "sent")
 	draftsDir := filepath.Join(opts.BaseDir, "drafts")
 
+	// Ensure directories exist and add to .gitignore if needed
+	if err := EnsureEmailDirectories(); err != nil {
+		return fmt.Errorf("failed to create email directories: %v", err)
+	}
+	
 	for _, dir := range []string{receivedDir, sentDir, draftsDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return fmt.Errorf("failed to create directory %s: %v", dir, err)
 		}
 	}

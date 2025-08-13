@@ -2,10 +2,8 @@ package mailos
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/smtp"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -265,41 +263,24 @@ func saveToLocalSentFolder(messageContent string, config *Config, msg *EmailMess
 		return fmt.Errorf("failed to get sent directory: %v", err)
 	}
 	
-	// Create a SavedEmail struct
-	savedEmail := SavedEmail{
-		ID:          fmt.Sprintf("%d_%s", time.Now().Unix(), strings.ReplaceAll(msg.Subject, " ", "_")),
+	// Convert to EmailData for saving
+	emailData := EmailData{
 		From:        from,
 		To:          msg.To,
 		CC:          msg.CC,
 		BCC:         msg.BCC,
 		Subject:     msg.Subject,
 		Body:        msg.Body,
-		BodyHTML:    msg.BodyHTML,
-		Date:        time.Now(),
-		RawMessage:  messageContent,
 		Attachments: msg.Attachments,
+		Date:        time.Now(),
 	}
 	
-	// Generate filename with timestamp
-	filename := fmt.Sprintf("%s_%s.json", 
-		time.Now().Format("20060102_150405"),
-		strings.ReplaceAll(strings.ReplaceAll(msg.Subject, "/", "_"), " ", "_"))
-	
-	// Ensure filename is not too long
-	if len(filename) > 100 {
-		filename = filename[:100] + ".json"
-	}
-	
+	// Generate filename
+	filename := GenerateEmailFilename(msg.Subject, time.Now(), "sent")
 	filepath := filepath.Join(sentDir, filename)
 	
-	// Marshal to JSON
-	data, err := json.MarshalIndent(savedEmail, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal email: %v", err)
-	}
-	
-	// Write to file
-	if err := os.WriteFile(filepath, data, 0600); err != nil {
+	// Save using the common function
+	if err := SaveEmailToMarkdown(emailData, filepath); err != nil {
 		return fmt.Errorf("failed to write email file: %v", err)
 	}
 	

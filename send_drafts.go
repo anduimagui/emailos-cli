@@ -23,7 +23,11 @@ type SendDraftsOptions struct {
 func SendDrafts(opts SendDraftsOptions) error {
 	// Set default draft directory
 	if opts.DraftDir == "" {
-		opts.DraftDir = "draft-emails"
+		draftsDir, err := GetDraftsDir()
+		if err != nil {
+			return fmt.Errorf("failed to get drafts directory: %v", err)
+		}
+		opts.DraftDir = draftsDir
 	}
 
 	// Check if draft directory exists
@@ -100,6 +104,12 @@ func SendDrafts(opts SendDraftsOptions) error {
 			continue
 		}
 
+		// Load config to get signature settings
+		config, err := LoadConfig()
+		if err != nil {
+			fmt.Printf("  ⚠️  Warning: Could not load config for signature: %v\n", err)
+		}
+
 		// Create email message
 		msg := &EmailMessage{
 			To:          draft.To,
@@ -108,6 +118,28 @@ func SendDrafts(opts SendDraftsOptions) error {
 			Subject:     draft.Subject,
 			Body:        draft.Body,
 			Attachments: draft.Attachments,
+		}
+
+		// Add signature if config loaded successfully
+		if config != nil {
+			var sig string
+			// Check for signature override first
+			if config.SignatureOverride != "" {
+				sig = config.SignatureOverride
+			} else {
+				// Use FromEmail if specified, otherwise use Email
+				emailToShow := config.Email
+				if config.FromEmail != "" {
+					emailToShow = config.FromEmail
+				}
+				name := config.FromName
+				if name == "" {
+					name = strings.Split(emailToShow, "@")[0]
+				}
+				sig = fmt.Sprintf("\n--\n%s\n%s", name, emailToShow)
+			}
+			msg.IncludeSignature = true
+			msg.SignatureText = sig
 		}
 
 		// Convert markdown to HTML

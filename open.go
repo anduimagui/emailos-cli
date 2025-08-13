@@ -68,25 +68,37 @@ func tryAlternativeOpen(messageID string) error {
 
 // OpenEmailByID fetches an email by its IMAP sequence number and opens it
 func OpenEmailByID(id uint32) error {
-	// First, fetch the email to get its details
+	// First, try to fetch from inbox
 	opts := ReadOptions{
 		Limit: 100, // Fetch enough to find the email
 	}
 	
 	emails, err := Read(opts)
-	if err != nil {
-		return fmt.Errorf("failed to fetch emails: %v", err)
-	}
-	
-	// Find the email with the matching ID
-	for _, email := range emails {
-		if email.ID == id {
-			fmt.Printf("Opening email: %s from %s\n", email.Subject, email.From)
-			return openEmailInClient(email)
+	if err == nil {
+		// Find the email with the matching ID in inbox
+		for _, email := range emails {
+			if email.ID == id {
+				fmt.Printf("Opening email: %s from %s\n", email.Subject, email.From)
+				return openEmailInClient(email)
+			}
 		}
 	}
 	
-	return fmt.Errorf("email with ID %d not found", id)
+	// If not found in inbox, try sent folder
+	sentOpts := SentOptions{
+		Limit: 100,
+	}
+	sentEmails, err := ReadSentEmails(sentOpts)
+	if err == nil {
+		for _, email := range sentEmails {
+			if email.ID == id {
+				fmt.Printf("Opening sent email: %s to %s\n", email.Subject, strings.Join(email.To, ", "))
+				return openEmailInClient(email)
+			}
+		}
+	}
+	
+	return fmt.Errorf("email with ID %d not found in inbox or sent folder", id)
 }
 
 // openEmailInClient opens a specific email in the mail client
@@ -283,4 +295,156 @@ func escapeAppleScriptString(s string) string {
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	s = strings.ReplaceAll(s, "\r", `\r`)
 	return s
+}
+
+// OpenWebMailFolder opens a specific folder in the user's webmail interface
+// based on their configured provider
+func OpenWebMailFolder(folder string) error {
+	// Load config to get the user's email provider and email address
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %v", err)
+	}
+	
+	if config.Provider == "" {
+		return fmt.Errorf("no email provider configured")
+	}
+	
+	if config.Email == "" {
+		return fmt.Errorf("no email address configured")
+	}
+	
+	// Get the URL for the specific folder based on provider
+	url := getWebMailFolderURL(config.Provider, config.Email, folder)
+	if url == "" {
+		return fmt.Errorf("webmail not supported for provider: %s", config.Provider)
+	}
+	
+	// Open the URL in the default browser
+	return openURL(url)
+}
+
+// getWebMailFolderURL returns the appropriate webmail URL for the provider and folder
+func getWebMailFolderURL(provider, email, folder string) string {
+	// URL encode the email for use in query parameters
+	encodedEmail := url.QueryEscape(email)
+	
+	switch provider {
+	case ProviderGmail:
+		switch folder {
+		case "sent":
+			return GmailSentURL
+		case "inbox":
+			return GmailInboxURL
+		case "drafts":
+			return GmailDraftsURL
+		case "all":
+			return GmailAllMailURL
+		default:
+			return GmailWebURL
+		}
+		
+	case ProviderFastmail:
+		switch folder {
+		case "sent":
+			return fmt.Sprintf("%s/search:from%%3A%s", FastmailSentURL, encodedEmail)
+		case "inbox":
+			return FastmailInboxURL
+		case "drafts":
+			return FastmailDraftsURL
+		case "all":
+			return FastmailAllMailURL
+		default:
+			return FastmailWebURL
+		}
+		
+	case ProviderOutlook:
+		switch folder {
+		case "sent":
+			return OutlookSentURL
+		case "inbox":
+			return OutlookInboxURL
+		case "drafts":
+			return OutlookDraftsURL
+		case "all":
+			return OutlookWebURL
+		default:
+			return OutlookWebURL
+		}
+		
+	case ProviderYahoo:
+		switch folder {
+		case "sent":
+			return YahooSentURL
+		case "inbox":
+			return YahooInboxURL
+		case "drafts":
+			return YahooDraftsURL
+		case "all":
+			return YahooWebURL
+		default:
+			return YahooWebURL
+		}
+		
+	case ProviderZoho:
+		switch folder {
+		case "sent":
+			return ZohoSentURL
+		case "inbox":
+			return ZohoInboxURL
+		case "drafts":
+			return ZohoDraftsURL
+		case "all":
+			return ZohoInboxURL
+		default:
+			return ZohoWebURL
+		}
+		
+	default:
+		// For unknown providers, try a generic mailto link
+		return ""
+	}
+}
+
+// openURL opens a URL in the system's default browser
+func openURL(url string) error {
+	var cmd *exec.Cmd
+	
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	default:
+		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	}
+	
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to open URL: %v", err)
+	}
+	
+	fmt.Printf("✓ Opened in browser: %s\n", url)
+	return nil
+}
+
+// OpenSentMail opens the sent mail folder in the webmail interface
+func OpenSentMail() error {
+	return OpenWebMailFolder("sent")
+}
+
+// OpenInbox opens the inbox in the webmail interface
+func OpenInbox() error {
+	return OpenWebMailFolder("inbox")
+}
+
+// OpenDrafts opens the drafts folder in the webmail interface
+func OpenDrafts() error {
+	return OpenWebMailFolder("drafts")
+}
+
+// OpenAllMail opens all mail in the webmail interface
+func OpenAllMail() error {
+	return OpenWebMailFolder("all")
 }

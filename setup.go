@@ -331,7 +331,10 @@ func Setup() error {
 	password := string(passwordBytes)
 	fmt.Println() // New line after password input
 
-	// Create config
+	// Load existing config to preserve accounts
+	existingConfig, _ := LoadConfig()
+	
+	// Create or update config, preserving existing accounts
 	config := &Config{
 		Provider:     selectedKey,
 		Email:        email,
@@ -340,6 +343,35 @@ func Setup() error {
 		ProfileImage: profileImagePath,
 		LicenseKey:   licenseKey,
 		DefaultAICLI: defaultAICLI,
+		ActiveAccount: email,
+	}
+	
+	// Preserve existing accounts if they exist
+	if existingConfig != nil && len(existingConfig.Accounts) > 0 {
+		config.Accounts = existingConfig.Accounts
+		
+		// Check if we need to add the current account to the accounts list
+		accountExists := false
+		for _, acc := range config.Accounts {
+			if acc.Email == email {
+				accountExists = true
+				break
+			}
+		}
+		
+		// Add current account if it's not already in the list
+		if !accountExists && email != "" {
+			newAccount := AccountConfig{
+				Email:        email,
+				Provider:     selectedKey,
+				Password:     password,
+				FromName:     fromName,
+				FromEmail:    email,
+				ProfileImage: profileImagePath,
+				Label:        "Setup Account",
+			}
+			config.Accounts = append(config.Accounts, newAccount)
+		}
 	}
 
 	// Save config
@@ -361,7 +393,7 @@ func Setup() error {
 	if syncNow != "n" && syncNow != "no" {
 		fmt.Println("\nSyncing emails (this may take a moment)...")
 		syncOpts := SyncOptions{
-			BaseDir:     "emails",
+			BaseDir:     "", // Will use default .email folder
 			Limit:       100,
 			IncludeRead: false,
 			Verbose:     false,

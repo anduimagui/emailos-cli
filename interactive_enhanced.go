@@ -122,18 +122,21 @@ func showCommandMenu() error {
 		Icon        string
 		Action      func() error
 	}{
-		{"Read Emails", "/read", "Browse and read your emails", "📧", handleInteractiveRead},
-		{"Send Email", "/send", "Compose and send a new email", "✉️", handleInteractiveSend},
-		{"Email Report", "/report", "Generate email analytics", "📊", handleInteractiveReport},
-		{"Unsubscribe Links", "/unsubscribe", "Find unsubscribe links", "🔗", handleInteractiveUnsubscribe},
-		{"Delete Emails", "/delete", "Delete emails by criteria", "🗑️", handleInteractiveDelete},
-		{"Mark as Read", "/mark-read", "Mark emails as read", "✓", handleInteractiveMarkRead},
-		{"Templates", "/template", "Manage email templates", "📝", func() error { return ManageTemplate() }},
-		{"Configuration", "/configure", "Settings & configuration", "⚙️", handleInteractiveConfigure},
-		{"AI Provider", "/provider", "Set AI provider", "🤖", func() error { return SelectAndConfigureAIProvider() }},
-		{"Show Info", "/info", "Display configuration", "ℹ️", func() error { return showInfo() }},
-		{"Help", "/help", "Show help information", "❓", showInteractiveHelp},
-		{"Exit", "/exit", "Exit EmailOS", "👋", func() error { return fmt.Errorf("exit") }},
+		{"Read Emails", "/read", "Browse and read your emails", IconEmail, handleInteractiveRead},
+		{"Send Email", "/send", "Compose and send a new email", IconSend, handleInteractiveSend},
+		{"Open Inbox", "/inbox", "Open inbox in web browser", IconInbox, func() error { return OpenInbox() }},
+		{"Open Sent Mail", "/sent", "Open sent mail in web browser", IconSent, func() error { return OpenSentMail() }},
+		{"Open Drafts", "/drafts", "Open drafts in web browser", IconDrafts, func() error { return OpenDrafts() }},
+		{"Email Report", "/report", "Generate email analytics", IconReport, handleInteractiveReport},
+		{"Unsubscribe Links", "/unsubscribe", "Find unsubscribe links", IconUnsubscribe, handleInteractiveUnsubscribe},
+		{"Delete Emails", "/delete", "Delete emails by criteria", IconDelete, handleInteractiveDelete},
+		{"Mark as Read", "/mark-read", "Mark emails as read", IconCheck, handleInteractiveMarkRead},
+		{"Templates", "/template", "Manage email templates", IconTemplate, func() error { return ManageTemplate() }},
+		{"Configuration", "/configure", "Settings & configuration", IconSettings, handleInteractiveConfigure},
+		{"AI Provider", "/provider", "Set AI provider", IconAI, func() error { return SelectAndConfigureAIProvider() }},
+		{"Show Info", "/info", "Display configuration", IconInfo, func() error { return showInfo() }},
+		{"Help", "/help", "Show help information", IconHelp, showInteractiveHelp},
+		{"Exit", "/exit", "Exit EmailOS", IconExit, func() error { return fmt.Errorf("exit") }},
 	}
 
 	// Display commands as a list first for visibility
@@ -199,6 +202,12 @@ func executeCommand(input string) error {
 		return handleReadCommand(args)
 	case "send":
 		return handleInteractiveSend()
+	case "inbox":
+		return OpenInbox()
+	case "sent":
+		return OpenSentMail()
+	case "drafts":
+		return OpenDrafts()
 	case "report":
 		return handleInteractiveReport()
 	case "unsubscribe":
