@@ -804,7 +804,7 @@ If you're having issues:
 2. Check that IMAP/SMTP access is enabled in your email settings
 3. Some providers may require you to enable "less secure app access"
 
-For more information, visit: https://github.com/emailos/mailos
+For more information, visit: ` + GitHubRepo + `
 `
 	
 	return os.WriteFile(readmePath, []byte(content), 0644)

@@ -1,0 +1,316 @@
+version: '3'
+
+vars:
+  SERVER_NAME: emailos-server
+  SSH_KEY_NAME: emailos-server
+  SSH_KEY_PATH: ~/.ssh/emailos_server_key
+  LOCATION: hel1  # Helsinki datacenter
+  SERVER_TYPE: cpx11  # 1 vCPU, 2GB RAM
+  IMAGE: ubuntu-24.04
+  MAILOS_PORT: 8089  # Web interface port for MailOS
+
+tasks:
+  check:
+    desc: Check if hcloud CLI is configured
+    cmds:
+      - hcloud version
+      - hcloud context active
+    silent: false
+
+  generate-ssh-key:
+    desc: Generate SSH key for EmailOS server
+    cmds:
+      - |
+        if [ ! -f {{.SSH_KEY_PATH}} ]; then
+          ssh-keygen -t ed25519 -C "{{.SSH_KEY_NAME}}@emailos" -f {{.SSH_KEY_PATH}} -N ""
+          echo "SSH key generated at {{.SSH_KEY_PATH}}"
+        else
+          echo "SSH key already exists at {{.SSH_KEY_PATH}}"
+        fi
+
+  upload-ssh-key:
+    desc: Upload SSH key to Hetzner Cloud
+    deps: [generate-ssh-key]
+    cmds:
+      - |
+        if ! hcloud ssh-key list | grep -q "{{.SSH_KEY_NAME}}"; then
+          hcloud ssh-key create --name {{.SSH_KEY_NAME}} --public-key-from-file {{.SSH_KEY_PATH}}.pub
+          echo "SSH key uploaded to Hetzner Cloud"
+        else
+          echo "SSH key already exists in Hetzner Cloud"
+        fi
+
+  deploy:
+    desc: Deploy EmailOS server to Hetzner Cloud
+    deps: [upload-ssh-key]
+    cmds:
+      - |
+        if hcloud server list | grep -q "{{.SERVER_NAME}}"; then
+          echo "Server {{.SERVER_NAME}} already exists. Use 'task redeploy' to recreate."
+          exit 1
+        fi
+      - |
+        hcloud server create \
+          --name {{.SERVER_NAME}} \
+          --type {{.SERVER_TYPE}} \
+          --image {{.IMAGE}} \
+          --ssh-key {{.SSH_KEY_NAME}} \
+          --location {{.LOCATION}} \
+          --user-data-from-file config/cloud-init.yaml
+      - echo "Waiting for server to be ready..."
+      - sleep 60
+      - task: get-ip
+      - task: test-connection
+      - task: install-emailos
+
+  get-ip:
+    desc: Get server IP address
+    cmds:
+      - |
+        IP=$(hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        echo "Server IP: $IP"
+        echo "$IP" > .server-ip
+
+  test-connection:
+    desc: Test SSH connection to server
+    cmds:
+      - |
+        IP=$(cat .server-ip)
+        echo "Testing connection to $IP..."
+        ssh -i {{.SSH_KEY_PATH}} -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@$IP "echo 'Connection successful!'"
+
+  install-emailos:
+    desc: Install EmailOS on the server
+    cmds:
+      - |
+        IP=$(cat .server-ip)
+        echo "Installing EmailOS on server..."
+        ssh -i {{.SSH_KEY_PATH}} root@$IP << 'EOF'
+          # Install Go (required for EmailOS)
+          wget -q -O - https://go.dev/dl/go1.23.0.linux-amd64.tar.gz | tar -xz -C /usr/local
+          echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
+          export PATH=$PATH:/usr/local/go/bin
+          
+          # Install Node.js (for npm package)
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt install -y nodejs
+          
+          # Install EmailOS via npm
+          npm install -g mailos
+          
+          # Create EmailOS directories
+          mkdir -p /root/emailos-data
+          mkdir -p /root/emailos-config
+          mkdir -p /root/emailos-drafts
+          
+          # Create systemd service for EmailOS API server (if needed)
+          cat > /etc/systemd/system/emailos-api.service << 'SERVICE'
+          [Unit]
+          Description=EmailOS API Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/node /usr/lib/node_modules/mailos/server.js
+          Restart=always
+          User=root
+          Environment=NODE_ENV=production
+          Environment=PORT=8089
+          WorkingDirectory=/root/emailos-data
+
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          
+          # Enable but don't start yet (needs configuration)
+          systemctl daemon-reload
+          systemctl enable emailos-api
+          
+          echo "EmailOS installed successfully!"
+        EOF
+
+  status:
+    desc: Show server status and connection info
+    cmds:
+      - hcloud server describe {{.SERVER_NAME}}
+      - task: get-ip
+      - |
+        IP=$(cat .server-ip)
+        echo "================================"
+        echo "📧 EmailOS Server Status"
+        echo "================================"
+        echo "IP Address: $IP"
+        echo "SSH: ssh -i {{.SSH_KEY_PATH}} root@$IP"
+        echo "Mosh: mosh --ssh='ssh -i {{.SSH_KEY_PATH}}' root@$IP"
+        echo "Web UI: http://$IP:{{.MAILOS_PORT}} (when configured)"
+        echo ""
+        echo "To configure EmailOS:"
+        echo "1. Connect: task connect"
+        echo "2. Run: mailos setup"
+        echo "================================"
+
+  connect:
+    desc: Connect to server via SSH
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        ssh -i {{.SSH_KEY_PATH}} root@$IP
+
+  mosh:
+    desc: Connect to server via Mosh
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        mosh --ssh="ssh -i {{.SSH_KEY_PATH}}" root@$IP
+
+  setup-tmux:
+    desc: Start tmux session on server for persistent work
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        ssh -i {{.SSH_KEY_PATH}} root@$IP "tmux new-session -d -s emailos || tmux attach-session -t emailos"
+
+  install-claude:
+    desc: Install Claude Code on server for AI assistance
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        ssh -i {{.SSH_KEY_PATH}} root@$IP << 'EOF'
+          # Install Claude Code CLI
+          npm install -g @anthropic-ai/claude-code
+          
+          # Create alias for convenience
+          echo 'alias cc="claude-code"' >> ~/.bashrc
+          
+          echo "Claude Code installed! Use 'claude-code' or 'cc' to start."
+        EOF
+
+  install-other-ai:
+    desc: Install other AI CLI tools (Aider, etc.)
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        ssh -i {{.SSH_KEY_PATH}} root@$IP << 'EOF'
+          # Install Python and pip for AI tools
+          apt update
+          apt install -y python3-pip python3-venv
+          
+          # Install Aider
+          pip3 install aider-chat
+          
+          # Install other AI tools as needed
+          # pip3 install <other-tool>
+          
+          echo "AI tools installed!"
+        EOF
+
+  configure-emailos:
+    desc: Configure EmailOS interactively on server
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        echo "Connecting to configure EmailOS..."
+        ssh -i {{.SSH_KEY_PATH}} -t root@$IP "mailos setup"
+
+  logs:
+    desc: Show server logs
+    cmds:
+      - hcloud server logs {{.SERVER_NAME}}
+
+  stop:
+    desc: Stop the server
+    cmds:
+      - hcloud server shutdown {{.SERVER_NAME}}
+      - echo "Server stopped"
+
+  start:
+    desc: Start the server
+    cmds:
+      - hcloud server poweron {{.SERVER_NAME}}
+      - sleep 30
+      - task: get-ip
+      - echo "Server started"
+
+  restart:
+    desc: Restart the server
+    cmds:
+      - task: stop
+      - sleep 10
+      - task: start
+
+  destroy:
+    desc: Delete the server (destructive!)
+    prompt: Are you sure you want to delete the EmailOS server? This cannot be undone.
+    cmds:
+      - hcloud server delete {{.SERVER_NAME}}
+      - rm -f .server-ip
+      - echo "Server deleted"
+
+  redeploy:
+    desc: Destroy and recreate the server
+    cmds:
+      - task: destroy
+      - sleep 5
+      - task: deploy
+
+  termius-config:
+    desc: Generate Termius configuration for mobile access
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        echo "================================"
+        echo "📱 Termius Configuration"
+        echo "================================"
+        echo "Host: $IP"
+        echo "Username: root"
+        echo "Port: 22"
+        echo "SSH Key: Copy content from {{.SSH_KEY_PATH}}"
+        echo ""
+        echo "Private key content:"
+        echo "--------------------"
+        cat {{.SSH_KEY_PATH}}
+        echo "--------------------"
+        echo ""
+        echo "Quick connect URL:"
+        echo "termius://host/$IP?user=root&port=22"
+        echo ""
+        echo "After connecting:"
+        echo "1. Run: mailos setup (to configure email)"
+        echo "2. Run: claude-code (for AI assistance)"
+        echo "3. Run: tmux (for persistent sessions)"
+        echo "================================"
+
+  backup:
+    desc: Backup EmailOS data from server
+    cmds:
+      - |
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        BACKUP_NAME="emailos-backup-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p ./backups
+        ssh -i {{.SSH_KEY_PATH}} root@$IP "tar -czf /tmp/$BACKUP_NAME.tar.gz /root/emailos-data /root/emailos-config /root/emailos-drafts /root/.email 2>/dev/null || true"
+        scp -i {{.SSH_KEY_PATH}} root@$IP:/tmp/$BACKUP_NAME.tar.gz ./backups/
+        echo "Backup saved to ./backups/$BACKUP_NAME.tar.gz"
+
+  restore:
+    desc: Restore EmailOS data to server
+    cmds:
+      - |
+        if [ -z "{{.BACKUP_FILE}}" ]; then
+          echo "Please specify backup file: task restore BACKUP_FILE=./backups/emailos-backup-xxx.tar.gz"
+          exit 1
+        fi
+        IP=$(cat .server-ip 2>/dev/null || hcloud server describe {{.SERVER_NAME}} -o json | jq -r '.public_net.ipv4.ip')
+        scp -i {{.SSH_KEY_PATH}} {{.BACKUP_FILE}} root@$IP:/tmp/restore.tar.gz
+        ssh -i {{.SSH_KEY_PATH}} root@$IP "cd / && tar -xzf /tmp/restore.tar.gz && rm /tmp/restore.tar.gz"
+        echo "Backup restored from {{.BACKUP_FILE}}"
+
+  clean:
+    desc: Clean up local files
+    cmds:
+      - rm -f .server-ip
+      - echo "Local files cleaned"
+
+  help:
+    desc: Show available tasks
+    cmds:
+      - task --list

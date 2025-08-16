@@ -15,11 +15,11 @@
   ],
   "homepage": "https://email-os.com",
   "bugs": {
-    "url": "https://github.com/emailos/mailos/issues"
+    "url": "https://github.com/corp-os/emailos/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/emailos/mailos.git"
+    "url": "git+https://github.com/corp-os/emailos.git"
   },
   "license": "Proprietary",
   "author": "EmailOS Team",

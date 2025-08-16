@@ -73,6 +73,23 @@ func InitializeMailSetup(accountEmail string) (*MailSetup, error) {
 		}
 	}
 	
+	// Validate authentication - try to fetch from global if missing locally
+	if err := ValidateAuthentication(config); err != nil {
+		// Only return error if it's a real auth error, not just missing local password
+		// that can be fetched from global
+		if authErr, ok := err.(*AuthError); ok && authErr.Type == "missing_password" {
+			// Try one more time to get password from global config
+			password := getPasswordFromGlobalConfig(config.Email, config.Provider)
+			if password != "" {
+				config.Password = password
+			} else {
+				return nil, err
+			}
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	
 	// Create and cache the setup
 	setup := &MailSetup{
 		Config:        config,

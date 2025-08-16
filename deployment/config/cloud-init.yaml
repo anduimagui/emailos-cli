@@ -1,0 +1,291 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - build-essential
+  - git
+  - curl
+  - wget
+  - vim
+  - htop
+  - mosh
+  - tmux
+  - ufw
+  - fail2ban
+  - nodejs
+  - npm
+  - python3-pip
+  - python3-venv
+  - jq
+  - ripgrep
+  - fd-find
+  - bat
+  - net-tools
+  - software-properties-common
+
+runcmd:
+  # Configure firewall
+  - ufw allow 22/tcp
+  - ufw allow 60000:61000/udp  # Mosh
+  - ufw allow 8089/tcp  # EmailOS Web UI
+  - ufw allow 8080/tcp  # General web server
+  - ufw --force enable
+  
+  # Install global npm tools
+  - npm install -g http-server
+  - npm install -g pm2  # Process manager for Node.js apps
+  
+  # Create directory structure for EmailOS
+  - mkdir -p /home/root/projects
+  - mkdir -p /home/root/emailos-data
+  - mkdir -p /home/root/emailos-config
+  - mkdir -p /home/root/emailos-drafts
+  - mkdir -p /home/root/backups
+  - mkdir -p /home/root/scripts
+  
+  # Create welcome page for web server
+  - |
+    cat > /home/root/projects/index.html << 'HTML'
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>EmailOS Server</title>
+        <style>
+            body {
+                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                color: white;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }
+            .container {
+                text-align: center;
+                padding: 3rem;
+                background: rgba(255,255,255,0.1);
+                border-radius: 20px;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            }
+            h1 {
+                font-size: 3rem;
+                margin-bottom: 1rem;
+            }
+            p {
+                font-size: 1.2rem;
+                opacity: 0.9;
+                margin: 0.5rem 0;
+            }
+            .status {
+                margin-top: 2rem;
+                padding: 1rem;
+                background: rgba(255,255,255,0.1);
+                border-radius: 10px;
+            }
+            .command {
+                font-family: 'Courier New', monospace;
+                background: rgba(0,0,0,0.3);
+                padding: 0.3rem 0.6rem;
+                border-radius: 5px;
+                display: inline-block;
+                margin: 0.2rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>📧 EmailOS Server</h1>
+            <p>AI-Powered Command Line Email Client</p>
+            <p>Your server is ready for configuration!</p>
+            
+            <div class="status">
+                <h3>Quick Start Commands:</h3>
+                <p><span class="command">mailos setup</span> - Configure email account</p>
+                <p><span class="command">claude-code</span> - Start AI coding assistant</p>
+                <p><span class="command">tmux</span> - Create persistent session</p>
+                <p><span class="command">mailos interactive</span> - Interactive email UI</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    HTML
+  
+  # Start web server in background
+  - cd /home/root/projects && nohup http-server -p 8080 > /dev/null 2>&1 &
+  
+  # Configure system optimizations
+  - |
+    cat > /etc/sysctl.d/99-emailos.conf << 'SYSCTL'
+    # Network optimizations for EmailOS
+    net.core.rmem_max = 134217728
+    net.core.wmem_max = 134217728
+    net.ipv4.tcp_rmem = 4096 87380 134217728
+    net.ipv4.tcp_wmem = 4096 65536 134217728
+    net.core.netdev_max_backlog = 5000
+    net.ipv4.tcp_congestion_control = bbr
+    net.core.default_qdisc = fq
+    
+    # Memory optimizations
+    vm.swappiness = 10
+    vm.vfs_cache_pressure = 50
+    SYSCTL
+  - sysctl -p /etc/sysctl.d/99-emailos.conf
+  
+  # Create swap file for better performance
+  - |
+    if [ ! -f /swapfile ]; then
+      fallocate -l 2G /swapfile
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+  
+  # Set timezone to UTC
+  - timedatectl set-timezone UTC
+  
+  # Create helpful aliases
+  - |
+    cat >> /root/.bashrc << 'ALIASES'
+    
+    # EmailOS aliases
+    alias mail='mailos'
+    alias m='mailos'
+    alias mi='mailos interactive'
+    alias ms='mailos send'
+    alias mr='mailos read'
+    alias md='mailos draft'
+    
+    # AI CLI aliases
+    alias cc='claude-code'
+    alias ai='claude-code'
+    
+    # System aliases
+    alias ll='ls -alF'
+    alias la='ls -A'
+    alias l='ls -CF'
+    alias ..='cd ..'
+    alias ...='cd ../..'
+    
+    # Git aliases
+    alias gs='git status'
+    alias ga='git add'
+    alias gc='git commit'
+    alias gp='git push'
+    alias gl='git log --oneline'
+    
+    # Welcome message
+    echo "================================"
+    echo "📧 Welcome to EmailOS Server"
+    echo "================================"
+    echo "Quick commands:"
+    echo "  mailos setup    - Configure email"
+    echo "  mailos help     - Show all commands"
+    echo "  claude-code     - Start AI assistant"
+    echo "  tmux            - Persistent session"
+    echo "================================"
+    ALIASES
+
+write_files:
+  - path: /root/.tmux.conf
+    content: |
+      # EmailOS tmux configuration
+      set -g mouse on
+      set -g history-limit 10000
+      set -g base-index 1
+      set -g pane-base-index 1
+      
+      # Status bar customization
+      set -g status-bg colour235
+      set -g status-fg white
+      set -g status-left '#[fg=green]#S '
+      set -g status-right '#[fg=yellow]%H:%M %d-%b-%y'
+      
+      # Key bindings
+      bind r source-file ~/.tmux.conf \; display "Config reloaded!"
+      bind | split-window -h
+      bind - split-window -v
+      
+      # Better colors
+      set -g default-terminal "screen-256color"
+      
+      # Window naming
+      set-window-option -g automatic-rename on
+      set-option -g set-titles on
+  
+  - path: /root/.vimrc
+    content: |
+      " EmailOS vim configuration
+      syntax on
+      set number
+      set relativenumber
+      set expandtab
+      set tabstop=4
+      set shiftwidth=4
+      set autoindent
+      set smartindent
+      set wrap
+      set linebreak
+      set ruler
+      set showcmd
+      set wildmenu
+      set incsearch
+      set hlsearch
+      set ignorecase
+      set smartcase
+      colorscheme desert
+  
+  - path: /root/scripts/setup-emailos.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # EmailOS Setup Helper Script
+      
+      echo "================================"
+      echo "📧 EmailOS Setup Assistant"
+      echo "================================"
+      
+      # Check if mailos is installed
+      if ! command -v mailos &> /dev/null; then
+          echo "Installing EmailOS..."
+          npm install -g mailos
+      fi
+      
+      # Run setup
+      echo "Starting EmailOS configuration..."
+      mailos setup
+      
+      echo ""
+      echo "Setup complete! Try these commands:"
+      echo "  mailos read        - Read recent emails"
+      echo "  mailos interactive - Interactive UI"
+      echo "  mailos help        - Show all commands"
+  
+  - path: /root/scripts/install-ai-tools.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Install AI CLI tools for EmailOS
+      
+      echo "Installing AI CLI tools..."
+      
+      # Claude Code
+      if ! command -v claude-code &> /dev/null; then
+          echo "Installing Claude Code..."
+          npm install -g @anthropic-ai/claude-code
+      fi
+      
+      # Aider
+      if ! command -v aider &> /dev/null; then
+          echo "Installing Aider..."
+          pip3 install aider-chat
+      fi
+      
+      # Other AI tools can be added here
+      
+      echo "AI tools installation complete!"
+      echo "Available commands:"
+      echo "  claude-code - Anthropic's Claude"
+      echo "  aider       - AI pair programming"

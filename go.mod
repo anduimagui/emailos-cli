@@ -1,4 +1,4 @@
-module github.com/emailos/mailos
+module github.com/corp-os/emailos
 
 go 1.24
 

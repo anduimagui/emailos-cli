@@ -5,21 +5,21 @@ This is a Homebrew tap for installing MailOS.
 ## Installation
 
 ```bash
-brew tap emailos/mailos https://github.com/emailos/homebrew-mailos
+brew tap corp-os/emailos https://github.com/corp-os/homebrew-emailos
 brew install mailos
 ```
 
 Or in a single command:
 
 ```bash
-brew install emailos/mailos/mailos
+brew install corp-os/emailos/mailos
 ```
 
 ## What is MailOS?
 
 MailOS is a command-line email client that provides a standardized interface for managing emails across multiple providers.
 
-For more information, visit: https://github.com/emailos/mailos
+For more information, visit: https://github.com/corp-os/emailos
 
 ## Formula
 

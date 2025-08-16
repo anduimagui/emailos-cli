@@ -349,7 +349,7 @@ mailos stats --days 30  # With visual charts
 
 ### Resources
 - Documentation: `mailos help`
-- GitHub Issues: https://github.com/emailos/mailos
+- GitHub Issues: https://github.com/corp-os/emailos
 - Community Forum: https://email-os.com/forum
 
 ### Support Commands

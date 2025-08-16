@@ -7,6 +7,7 @@ const (
 	AppSite        = "email-os.com"
 	AppVersion     = "0.1.11" // Update this when releasing new versions
 	AppDescription = "AI-powered email management system"
+	GitHubRepo     = "https://github.com/corp-os/emailos"
 )
 
 // Configuration file paths

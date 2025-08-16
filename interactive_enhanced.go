@@ -16,6 +16,20 @@ func InteractiveModeWithMenu() error {
 
 // InteractiveModeWithMenuOptions runs the enhanced interactive mode with control over display
 func InteractiveModeWithMenuOptions(showLogo bool, showInitialStatus bool) error {
+	// Check authentication before starting interactive mode
+	authConfig, authErr := LoadConfig()
+	if authErr == nil {
+		// Don't fail if config doesn't exist, setup will guide them
+		if err := ValidateAuthentication(authConfig); err != nil {
+			// Show the error but continue - they might want to run setup
+			if authErr, ok := err.(*AuthError); ok {
+				fmt.Print(authErr.Error())
+				fmt.Println("\nStarting interactive mode anyway - use /setup to configure.")
+				fmt.Println()
+			}
+		}
+	}
+	
 	// Check for MAILOS_USE_BUBBLETEA to use new Bubble Tea UI (default)
 	useBubbleTea := os.Getenv("MAILOS_USE_BUBBLETEA") != "false"
 	

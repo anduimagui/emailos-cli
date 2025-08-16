@@ -113,7 +113,7 @@ tasks:
         echo "  • Publish to npm registry" && \
         echo "  • Update Homebrew formula" && \
         echo "" && \
-        echo "Monitor progress at: https://github.com/emailos/mailos/actions"
+        echo "Monitor progress at: https://github.com/corp-os/emailos/actions"
 
   publish-minor:
     desc: Bump minor version and publish to all providers
