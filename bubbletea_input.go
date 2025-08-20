@@ -47,6 +47,7 @@ const (
 	commandMode
 	fileMode
 	accountMode
+	emailListMode
 )
 
 type model struct {
@@ -55,6 +56,8 @@ type model struct {
 	commands     []command
 	files        []string
 	accounts     []AccountConfig
+	emails       []*Email
+	selectedEmail *Email
 	mode         inputMode
 	selectedIdx  int
 	showList     bool
@@ -64,6 +67,8 @@ type model struct {
 	err          error
 	quitting     bool
 	showingAccountSelector bool
+	showingEmailList bool
+	showingEmailContent bool
 }
 
 type command struct {
@@ -73,6 +78,9 @@ type command struct {
 }
 
 func initialModel() model {
+	// Fetch last 10 emails on startup in background
+	emails := fetchLastEmails(10)
+	
 	ti := textinput.New()
 	ti.Placeholder = "Ask me anything or type / for commands, @ for files (searches subdirs)..."
 	ti.Focus()
@@ -83,7 +91,10 @@ func initialModel() model {
 	return model{
 		textInput:   ti,
 		suggestions: GetDefaultAISuggestions(),
+		emails:      emails,
+		showingEmailList: true,  // Show email list by default
 		commands: []command{
+			{"inbox", "Show inbox with last 10 emails", ""},
 			{"read", "Browse and read your emails", ""},
 			{"send", "Compose and send a new email", ""},
 			{"report", "Generate email analytics", ""},
@@ -131,7 +142,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyEscape:
-			if m.showingAccountSelector {
+			if m.showingEmailContent {
+				m.showingEmailContent = false
+				m.selectedEmail = nil
+			} else if m.showingEmailList {
+				m.showingEmailList = false
+				m.mode = normalMode
+				m.selectedIdx = 0
+			} else if m.showingAccountSelector {
 				m.showingAccountSelector = false
 				m.mode = normalMode
 				m.selectedIdx = 0
@@ -164,7 +182,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyUp:
-			if m.showingAccountSelector {
+			// Check if Alt is pressed for email navigation
+			if msg.Alt && len(m.emails) > 0 {
+				if m.mode != emailListMode {
+					m.mode = emailListMode
+					m.selectedIdx = 0
+				} else {
+					m.selectedIdx--
+					if m.selectedIdx < 0 {
+						m.selectedIdx = minInt(4, len(m.emails)-1) // Stay within displayed emails
+					}
+				}
+				return m, nil
+			}
+			
+			if m.showingEmailList || m.showingEmailContent {
+				m.selectedIdx--
+				if m.selectedIdx < 0 {
+					m.selectedIdx = len(m.emails) - 1
+				}
+			} else if m.showingAccountSelector {
 				m.selectedIdx--
 				if m.selectedIdx < 0 {
 					m.selectedIdx = len(m.accounts) // Include "Add New Account" option
@@ -184,7 +221,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyDown:
-			if m.showingAccountSelector {
+			// Check if Alt is pressed for email navigation
+			if msg.Alt && len(m.emails) > 0 {
+				if m.mode != emailListMode {
+					m.mode = emailListMode
+					m.selectedIdx = 0
+				} else {
+					m.selectedIdx++
+					maxIdx := minInt(4, len(m.emails)-1) // Stay within displayed emails
+					if m.selectedIdx > maxIdx {
+						m.selectedIdx = 0
+					}
+				}
+				return m, nil
+			}
+			
+			if m.showingEmailList || m.showingEmailContent {
+				m.selectedIdx++
+				if m.selectedIdx >= len(m.emails) {
+					m.selectedIdx = 0
+				}
+			} else if m.showingAccountSelector {
 				m.selectedIdx++
 				if m.selectedIdx > len(m.accounts) { // Include "Add New Account" option
 					m.selectedIdx = 0
@@ -232,6 +289,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			
 		case tea.KeyEnter:
+			// Check if Alt is pressed for opening email
+			if msg.Alt && m.mode == emailListMode && m.selectedIdx < len(m.emails) {
+				m.selectedEmail = m.emails[m.selectedIdx]
+				m.showingEmailContent = true
+				return m, nil
+			}
+			
+			// Handle email list selection
+			if m.showingEmailList && m.selectedIdx < len(m.emails) {
+				m.selectedEmail = m.emails[m.selectedIdx]
+				m.showingEmailContent = true
+				return m, nil
+			}
+			
 			// Handle account selector
 			if m.showingAccountSelector {
 				if m.selectedIdx < len(m.accounts) {
@@ -284,6 +355,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case commandMode:
 					if m.selectedIdx < len(m.commands) {
+						// Special handling for inbox command
+						if m.commands[m.selectedIdx].name == "inbox" {
+							m.showingEmailList = true
+							m.mode = emailListMode
+							m.showList = false
+							m.selectedIdx = 0
+							// Refresh emails
+							m.emails = fetchLastEmails(10)
+							return m, nil
+						}
 						m.result = "/" + m.commands[m.selectedIdx].name
 						m.quitting = true
 						return m, tea.Quit
@@ -378,6 +459,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	if m.quitting {
 		return ""
+	}
+
+	// If showing email content, show it
+	if m.showingEmailContent && m.selectedEmail != nil {
+		return m.renderEmailContent()
 	}
 
 	// If showing account selector, show it instead
@@ -519,6 +605,47 @@ func (m model) View() string {
 	} else {
 		// Help text when not showing list
 		s.WriteString("\n" + helpStyle.Render("Enter: submit | /: commands | @: files | Tab: accounts | Ctrl+C: cancel | Ctrl+D: exit") + "\n")
+	}
+
+	// Add email list at the bottom
+	if len(m.emails) > 0 {
+		s.WriteString("\n" + titleStyle.Render("📧 Recent Emails") + "\n")
+		s.WriteString(helpStyle.Render("Alt+↑/↓: Navigate emails | Alt+Enter: Open email") + "\n\n")
+		
+		maxEmails := 5 // Show last 5 emails to keep it compact
+		if len(m.emails) < maxEmails {
+			maxEmails = len(m.emails)
+		}
+		
+		for i := 0; i < maxEmails; i++ {
+			email := m.emails[i]
+			
+			// Format the email line compactly
+			from := email.From
+			if len(from) > 25 {
+				from = from[:22] + "..."
+			}
+			
+			subject := email.Subject
+			if len(subject) > 40 {
+				subject = subject[:37] + "..."
+			}
+			
+			date := email.Date.Format("Jan 2")
+			
+			line := fmt.Sprintf("%-25s │ %-40s │ %s", from, subject, date)
+			
+			// Highlight if this email is selected (when in email navigation mode)
+			if m.mode == emailListMode && i == m.selectedIdx {
+				s.WriteString(selectedStyle.Render("▸ " + line) + "\n")
+			} else {
+				s.WriteString("  " + line + "\n")
+			}
+		}
+		
+		if len(m.emails) > maxEmails {
+			s.WriteString(helpStyle.Render(fmt.Sprintf("  ... and %d more emails", len(m.emails)-maxEmails)) + "\n")
+		}
 	}
 
 	return boxStyle.Render(s.String())
@@ -797,6 +924,57 @@ func handleAddAccount() error {
 	}
 	
 	return nil
+}
+
+// fetchLastEmails fetches the last N emails from the inbox
+func fetchLastEmails(limit int) []*Email {
+	client, err := NewClient()
+	if err != nil {
+		return nil
+	}
+	
+	emails, err := client.ReadEmails(ReadOptions{
+		Limit: limit,
+	})
+	if err != nil {
+		return nil
+	}
+	
+	return emails
+}
+
+
+// renderEmailContent renders the full email content view
+func (m model) renderEmailContent() string {
+	if m.selectedEmail == nil {
+		return "No email selected"
+	}
+	
+	var s strings.Builder
+	
+	// Email header
+	s.WriteString(titleStyle.Render("📧 Email Content") + "\n")
+	s.WriteString(helpStyle.Render("Esc: Back to list • ↑/↓: Scroll") + "\n\n")
+	
+	// Email details
+	s.WriteString(boxStyle.Render(fmt.Sprintf(
+		"From: %s\nTo: %s\nSubject: %s\nDate: %s\n",
+		m.selectedEmail.From,
+		strings.Join(m.selectedEmail.To, ", "),
+		m.selectedEmail.Subject,
+		m.selectedEmail.Date.Format("Jan 2, 2006 15:04:05"),
+	)) + "\n\n")
+	
+	// Email body
+	s.WriteString("─────────────────────────────────────────────────\n\n")
+	s.WriteString(m.selectedEmail.Body)
+	
+	if len(m.selectedEmail.Attachments) > 0 {
+		s.WriteString("\n\n─────────────────────────────────────────────────\n")
+		s.WriteString("Attachments: " + strings.Join(m.selectedEmail.Attachments, ", "))
+	}
+	
+	return s.String()
 }
 
 // processFileReferences processes @ references in the input
