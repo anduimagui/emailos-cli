@@ -9,11 +9,12 @@ import (
 
 // AI provider command mappings
 var aiProviderCommands = map[string]string{
-	"claude-code":       "claude",
-	"claude-code-yolo":  "claude",
-	"openai-codex":      "openai",
-	"gemini-cli":        "gemini",
-	"opencode":          "opencode",
+	"claude-code":        "claude",
+	"claude-code-accept": "claude",
+	"claude-code-yolo":   "claude",
+	"openai-codex":       "openai",
+	"gemini-cli":         "gemini",
+	"opencode":           "opencode",
 }
 
 // GetAIProviderCommand returns the command for the configured AI provider
@@ -54,10 +55,14 @@ func InvokeAIProvider(query string) error {
 
 	// Build command based on provider type
 	var cmd *exec.Cmd
-	if config.DefaultAICLI == "claude-code-yolo" {
+	switch config.DefaultAICLI {
+	case "claude-code-yolo":
 		// YOLO mode with dangerous permissions flag
 		cmd = exec.Command(aiCommand, "--dangerously-skip-permissions", fullQuery)
-	} else {
+	case "claude-code-accept":
+		// Accept edits mode - automatically accepts file edits
+		cmd = exec.Command(aiCommand, "--accept-edits", fullQuery)
+	default:
 		// Regular interactive mode
 		cmd = exec.Command(aiCommand, fullQuery)
 	}

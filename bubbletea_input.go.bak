@@ -166,6 +166,272 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+						m.selectedIdx = minInt(4, len(m.emails)-1) // Stay within displayed emails
+					}
+				}
+				return m, nil
+			}
+			
+			if m.showingEmailList || m.showingEmailContent {
+				m.selectedIdx--
+				if m.selectedIdx < 0 {
+					m.selectedIdx = len(m.emails) - 1
+				}
+			} else if m.showingAccountSelector {
+				m.selectedIdx--
+				if m.selectedIdx < 0 {
+					m.selectedIdx = len(m.accounts) // Include "Add New Account" option
+				}
+			} else if m.showList {
+				m.selectedIdx--
+				if m.selectedIdx < 0 {
+					switch m.mode {
+					case normalMode:
+						m.selectedIdx = len(m.suggestions) - 1
+					case commandMode:
+						m.selectedIdx = len(m.commands) - 1
+					case fileMode:
+						m.selectedIdx = len(m.files) - 1
+					}
+				}
+			}
+
+		case tea.KeyDown:
+			// Check if Alt is pressed for email navigation
+			if msg.Alt && len(m.emails) > 0 {
+				if m.mode != emailListMode {
+					m.mode = emailListMode
+					m.selectedIdx = 0
+				} else {
+					m.selectedIdx++
+					maxIdx := minInt(4, len(m.emails)-1) // Stay within displayed emails
+					if m.selectedIdx > maxIdx {
+						m.selectedIdx = 0
+					}
+				}
+				return m, nil
+			}
+			
+			if m.showingEmailList || m.showingEmailContent {
+				m.selectedIdx++
+				if m.selectedIdx >= len(m.emails) {
+					m.selectedIdx = 0
+				}
+			} else if m.showingAccountSelector {
+				m.selectedIdx++
+				if m.selectedIdx > len(m.accounts) { // Include "Add New Account" option
+					m.selectedIdx = 0
+				}
+			} else if m.showList {
+				m.selectedIdx++
+				switch m.mode {
+				case normalMode:
+					if m.selectedIdx >= len(m.suggestions) {
+						m.selectedIdx = 0
+					}
+				case commandMode:
+					if m.selectedIdx >= len(m.commands) {
+						m.selectedIdx = 0
+					}
+				case fileMode:
+					if m.selectedIdx >= len(m.files) {
+						m.selectedIdx = 0
+					}
+				}
+			}
+
+		case tea.KeyCtrlS:
+			// Ctrl+S for permanent local account setting
+			if m.showingAccountSelector && m.selectedIdx < len(m.accounts) {
+				selectedEmail := m.accounts[m.selectedIdx].Email
+				
+				// Permanently set account in local .email/config.json
+				err := SetLocalAccountPreference(selectedEmail)
+				if err == nil {
+					m.showingAccountSelector = false
+					m.mode = normalMode
+					m.selectedIdx = 0
+					
+					// Force a refresh to update the display
+					return m, tea.ClearScreen
+				} else {
+					// Handle error
+					m.showingAccountSelector = false
+					m.mode = normalMode
+					m.selectedIdx = 0
+					fmt.Printf("\n✗ Error setting local account: %v\n", err)
+				}
+				return m, nil
+			}
+			
+		case tea.KeyEnter:
+			// Check if Alt is pressed for opening email
+			if msg.Alt && m.mode == emailListMode && m.selectedIdx < len(m.emails) {
+				m.selectedEmail = m.emails[m.selectedIdx]
+				m.showingEmailContent = true
+				return m, nil
+			}
+			
+			// Handle email list selection
+			if m.showingEmailList && m.selectedIdx < len(m.emails) {
+				m.selectedEmail = m.emails[m.selectedIdx]
+				m.showingEmailContent = true
+				return m, nil
+			}
+			
+			// Handle account selector
+			if m.showingAccountSelector {
+				if m.selectedIdx < len(m.accounts) {
+					selectedEmail := m.accounts[m.selectedIdx].Email
+					
+					// Session-only: Switch to selected account for sending
+					_, err := InitializeMailSetup(selectedEmail)
+					if err == nil {
+						// The InitializeMailSetup already sets session default
+						m.showingAccountSelector = false
+						m.mode = normalMode
+						m.selectedIdx = 0
+						
+						// Force a refresh to update the display
+						return m, tea.ClearScreen
+					} else {
+						// Handle error
+						m.showingAccountSelector = false
+						m.mode = normalMode
+						m.selectedIdx = 0
+						fmt.Printf("\n✗ Error switching account: %v\n", err)
+					}
+				} else {
+					// Add new account - show separate UI
+					m.result = "/add-account"
+					m.quitting = true
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+
+			value := m.textInput.Value()
+
+			// Handle empty input - show suggestions
+			if strings.TrimSpace(value) == "" && !m.showList {
+				m.showList = true
+				m.mode = normalMode
+				m.selectedIdx = 0
+				return m, nil
+			}
+
+			// Handle list selection
+			if m.showList {
+				switch m.mode {
+				case normalMode:
+					if m.selectedIdx < len(m.suggestions) {
+						m.result = m.suggestions[m.selectedIdx].Command
+						m.quitting = true
+						return m, tea.Quit
+					}
+				case commandMode:
+					if m.selectedIdx < len(m.commands) {
+						// Special handling for inbox command
+						if m.commands[m.selectedIdx].name == "inbox" {
+							m.showingEmailList = true
+							m.mode = emailListMode
+							m.showList = false
+							m.selectedIdx = 0
+							// Refresh emails
+							m.emails = fetchLastEmails(10)
+							return m, nil
+						}
+						m.result = "/" + m.commands[m.selectedIdx].name
+						m.quitting = true
+						return m, tea.Quit
+					}
+				case fileMode:
+					if m.selectedIdx < len(m.files) {
+						atPos := strings.LastIndex(value, "@")
+						if atPos >= 0 {
+							m.textInput.SetValue(value[:atPos] + "@" + m.files[m.selectedIdx] + " ")
+						}
+						m.showList = false
+						m.mode = normalMode
+						m.selectedIdx = 0
+					}
+				}
+				return m, nil
+			}
+
+			// Normal submit
+			m.result = value
+			m.quitting = true
+			return m, tea.Quit
+
+		default:
+			// Update text input
+			m.textInput, cmd = m.textInput.Update(msg)
+			
+			// Check for mode triggers
+			value := m.textInput.Value()
+			if value == "/" {
+				m.mode = commandMode
+				m.showList = true
+				m.selectedIdx = 0
+			} else if strings.HasSuffix(value, "@") {
+				m.mode = fileMode
+				m.files = getLocalFiles()
+				m.showList = true
+				m.selectedIdx = 0
+			} else if m.mode == commandMode && !strings.HasPrefix(value, "/") {
+				m.mode = normalMode
+				m.showList = false
+			} else if m.mode == fileMode && !strings.Contains(value, "@") {
+				m.mode = normalMode
+				m.showList = false
+			}
+
+			// Filter commands if in command mode
+			if m.mode == commandMode && len(value) > 1 {
+				filter := strings.ToLower(value[1:])
+				if filter != "" {
+					var filtered []command
+					for _, cmd := range m.commands {
+						if strings.Contains(strings.ToLower(cmd.name), filter) ||
+							strings.Contains(strings.ToLower(cmd.description), filter) {
+							filtered = append(filtered, cmd)
+						}
+					}
+					if len(filtered) > 0 {
+						m.commands = filtered
+						if m.selectedIdx >= len(m.commands) {
+							m.selectedIdx = 0
+						}
+					}
+				}
+			}
+
+			// Filter files if in file mode
+			if m.mode == fileMode {
+				atPos := strings.LastIndex(value, "@")
+				if atPos >= 0 && atPos < len(value)-1 {
+					filter := strings.ToLower(value[atPos+1:])
+					if filter != "" {
+						var filtered []string
+						for _, file := range getLocalFiles() {
+							if strings.Contains(strings.ToLower(file), filter) {
+								filtered = append(filtered, file)
+							}
+						}
+						m.files = filtered
+						if m.selectedIdx >= len(m.files) {
+							m.selectedIdx = 0
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return m, cmd
+}
+
 func (m model) View() string {
 	if m.quitting {
 		return ""

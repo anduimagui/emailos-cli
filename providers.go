@@ -118,6 +118,8 @@ func GetAICLIName(key string) string {
 	switch key {
 	case "claude-code":
 		return "Claude Code"
+	case "claude-code-accept":
+		return "Claude Code Accept Edits"
 	case "claude-code-yolo":
 		return "Claude Code YOLO Mode"
 	case "openai-codex":

@@ -241,6 +241,7 @@ func Setup() error {
 
 	aiProviders := []string{
 		"Claude Code",
+		"Claude Code Accept Edits",
 		"Claude Code YOLO Mode (skip permissions)",
 		"OpenAI Codex",
 		"Gemini CLI",
@@ -271,14 +272,16 @@ func Setup() error {
 	case 0:
 		defaultAICLI = "claude-code"
 	case 1:
-		defaultAICLI = "claude-code-yolo"
+		defaultAICLI = "claude-code-accept"
 	case 2:
-		defaultAICLI = "openai-codex"
+		defaultAICLI = "claude-code-yolo"
 	case 3:
-		defaultAICLI = "gemini-cli"
+		defaultAICLI = "openai-codex"
 	case 4:
-		defaultAICLI = "opencode"
+		defaultAICLI = "gemini-cli"
 	case 5:
+		defaultAICLI = "opencode"
+	case 6:
 		defaultAICLI = "none"
 	default:
 		defaultAICLI = "none"

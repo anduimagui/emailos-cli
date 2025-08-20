@@ -62,16 +62,18 @@ func configureLocal(opts ConfigureOptions) error {
 		if opts.AICLI != "" {
 			// Map command-line AI option to internal key
 			aiMap := map[string]string{
-				"claude-code":      "claude-code",
-				"claude-code-yolo": "claude-code-yolo",
-				"claude":           "claude-code",
-				"claude-yolo":      "claude-code-yolo",
-				"openai":           "openai-codex",
-				"openai-codex":     "openai-codex",
-				"gemini":           "gemini-cli",
-				"gemini-cli":       "gemini-cli",
-				"opencode":         "opencode",
-				"none":             "none",
+				"claude-code":        "claude-code",
+				"claude-code-accept": "claude-code-accept",
+				"claude-code-yolo":   "claude-code-yolo",
+				"claude":             "claude-code",
+				"claude-accept":      "claude-code-accept",
+				"claude-yolo":        "claude-code-yolo",
+				"openai":             "openai-codex",
+				"openai-codex":       "openai-codex",
+				"gemini":             "gemini-cli",
+				"gemini-cli":         "gemini-cli",
+				"opencode":           "opencode",
+				"none":               "none",
 			}
 			if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
 				localConfig.DefaultAICLI = key
@@ -187,16 +189,18 @@ func configureGlobal(opts ConfigureOptions) error {
 		if opts.AICLI != "" {
 			// Map command-line AI option to internal key
 			aiMap := map[string]string{
-				"claude-code":      "claude-code",
-				"claude-code-yolo": "claude-code-yolo",
-				"claude":           "claude-code",
-				"claude-yolo":      "claude-code-yolo",
-				"openai":           "openai-codex",
-				"openai-codex":     "openai-codex",
-				"gemini":           "gemini-cli",
-				"gemini-cli":       "gemini-cli",
-				"opencode":         "opencode",
-				"none":             "none",
+				"claude-code":        "claude-code",
+				"claude-code-accept": "claude-code-accept",
+				"claude-code-yolo":   "claude-code-yolo",
+				"claude":             "claude-code",
+				"claude-accept":      "claude-code-accept",
+				"claude-yolo":        "claude-code-yolo",
+				"openai":             "openai-codex",
+				"openai-codex":       "openai-codex",
+				"gemini":             "gemini-cli",
+				"gemini-cli":         "gemini-cli",
+				"opencode":           "opencode",
+				"none":               "none",
 			}
 		if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
 				globalConfig.DefaultAICLI = key
@@ -339,7 +343,7 @@ func editConfiguration(config *Config, configPath string, isGlobal bool) error {
 	// Edit AI CLI provider
 	currentAI := GetAICLIName(config.DefaultAICLI)
 	fmt.Printf("AI CLI Provider [%s]: ", currentAI)
-	fmt.Println("\n  Options: claude-code, claude-code-yolo, openai-codex, gemini-cli, opencode, none")
+	fmt.Println("\n  Options: claude-code, claude-code-accept, claude-code-yolo, openai-codex, gemini-cli, opencode, none")
 	fmt.Print("  Enter choice: ")
 	newAI, _ := reader.ReadString('\n')
 	newAI = strings.TrimSpace(strings.ToLower(newAI))
@@ -348,6 +352,8 @@ func editConfiguration(config *Config, configPath string, isGlobal bool) error {
 		switch newAI {
 		case "claude-code", "claude", "claude code":
 			config.DefaultAICLI = "claude-code"
+		case "claude-code-accept", "claude-accept", "claude accept":
+			config.DefaultAICLI = "claude-code-accept"
 		case "claude-code-yolo", "claude yolo", "yolo":
 			config.DefaultAICLI = "claude-code-yolo"
 		case "openai-codex", "openai", "codex":
@@ -579,16 +585,18 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 	if opts.AICLI != "" {
 		// Map command-line AI option to internal key
 		aiMap := map[string]string{
-			"claude-code":      "claude-code",
-			"claude-code-yolo": "claude-code-yolo",
-			"claude":           "claude-code",
-			"claude-yolo":      "claude-code-yolo",
-			"openai":           "openai-codex",
-			"openai-codex":     "openai-codex",
-			"gemini":           "gemini-cli",
-			"gemini-cli":       "gemini-cli",
-			"opencode":         "opencode",
-			"none":             "none",
+			"claude-code":        "claude-code",
+			"claude-code-accept": "claude-code-accept",
+			"claude-code-yolo":   "claude-code-yolo",
+			"claude":             "claude-code",
+			"claude-accept":      "claude-code-accept",
+			"claude-yolo":        "claude-code-yolo",
+			"openai":             "openai-codex",
+			"openai-codex":       "openai-codex",
+			"gemini":             "gemini-cli",
+			"gemini-cli":         "gemini-cli",
+			"opencode":           "opencode",
+			"none":               "none",
 		}
 		
 		if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
@@ -605,6 +613,7 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 		
 		aiProviders := []string{
 			"Claude Code",
+			"Claude Code Accept Edits",
 			"Claude Code YOLO Mode (skip permissions)",
 			"OpenAI Codex",
 			"Gemini CLI",
@@ -627,12 +636,14 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 		case 0:
 			defaultAICLI = "claude-code"
 		case 1:
-			defaultAICLI = "claude-code-yolo"
+			defaultAICLI = "claude-code-accept"
 		case 2:
-			defaultAICLI = "openai-codex"
+			defaultAICLI = "claude-code-yolo"
 		case 3:
-			defaultAICLI = "gemini-cli"
+			defaultAICLI = "openai-codex"
 		case 4:
+			defaultAICLI = "gemini-cli"
+		case 5:
 			defaultAICLI = "opencode"
 		default:
 			defaultAICLI = "none"
@@ -878,6 +889,7 @@ func changeAICLI(config *Config, configPath string) error {
 	
 	aiProviders := []string{
 		"Claude Code",
+		"Claude Code Accept Edits",
 		"Claude Code YOLO Mode (skip permissions)",
 		"OpenAI Codex",
 		"Gemini CLI", 
@@ -901,12 +913,14 @@ func changeAICLI(config *Config, configPath string) error {
 	case 0:
 		newAICLI = "claude-code"
 	case 1:
-		newAICLI = "claude-code-yolo"
+		newAICLI = "claude-code-accept"
 	case 2:
-		newAICLI = "openai-codex"
+		newAICLI = "claude-code-yolo"
 	case 3:
-		newAICLI = "gemini-cli"
+		newAICLI = "openai-codex"
 	case 4:
+		newAICLI = "gemini-cli"
+	case 5:
 		newAICLI = "opencode"
 	default:
 		newAICLI = "none"
@@ -1031,6 +1045,7 @@ func changeAICLILocal(config *Config, configPath string) error {
 	
 	aiProviders := []string{
 		"Claude Code",
+		"Claude Code Accept Edits",
 		"Claude Code YOLO Mode (skip permissions)",
 		"OpenAI Codex",
 		"Gemini CLI", 
@@ -1054,12 +1069,14 @@ func changeAICLILocal(config *Config, configPath string) error {
 	case 0:
 		newAICLI = "claude-code"
 	case 1:
-		newAICLI = "claude-code-yolo"
+		newAICLI = "claude-code-accept"
 	case 2:
-		newAICLI = "openai-codex"
+		newAICLI = "claude-code-yolo"
 	case 3:
-		newAICLI = "gemini-cli"
+		newAICLI = "openai-codex"
 	case 4:
+		newAICLI = "gemini-cli"
+	case 5:
 		newAICLI = "opencode"
 	default:
 		newAICLI = "none"

@@ -17,25 +17,28 @@ import (
 )
 
 type Email struct {
-	ID          uint32
-	From        string
-	To          []string
-	Subject     string
-	Date        time.Time
-	Body        string
-	BodyHTML    string
-	Attachments []string
+	ID              uint32
+	From            string
+	To              []string
+	Subject         string
+	Date            time.Time
+	Body            string
+	BodyHTML        string
+	Attachments     []string
+	AttachmentData  map[string][]byte // Map of filename to attachment data
 }
 
 type ReadOptions struct {
-	Limit       int
-	UnreadOnly  bool
-	FromAddress string
-	ToAddress   string
-	Subject     string
-	Since       time.Time
-	LocalOnly   bool  // Only read from local storage
-	SyncLocal   bool  // Sync received emails to local storage
+	Limit            int
+	UnreadOnly       bool
+	FromAddress      string
+	ToAddress        string
+	Subject          string
+	Since            time.Time
+	LocalOnly        bool  // Only read from local storage
+	SyncLocal        bool  // Sync received emails to local storage
+	DownloadAttach   bool  // Download attachment content
+	AttachmentDir    string // Directory to save attachments (if empty, returns in memory)
 }
 
 func Read(opts ReadOptions) ([]*Email, error) {
@@ -136,9 +139,16 @@ func Read(opts ReadOptions) ([]*Email, error) {
 
 	emails := make([]*Email, 0, len(ids))
 	for msg := range messages {
-		email, err := parseMessage(msg, section)
+		email, err := parseMessageWithOptions(msg, section, opts.DownloadAttach)
 		if err != nil {
 			continue
+		}
+		// Save attachments to disk if directory specified
+		if opts.DownloadAttach && opts.AttachmentDir != "" && len(email.AttachmentData) > 0 {
+			if err := saveAttachmentsToDisk(email, opts.AttachmentDir); err != nil {
+				// Log error but don't fail the read
+				fmt.Printf("Note: Could not save attachments: %v\n", err)
+			}
 		}
 		emails = append(emails, email)
 	}
@@ -166,12 +176,17 @@ func Read(opts ReadOptions) ([]*Email, error) {
 }
 
 func parseMessage(msg *imap.Message, section *imap.BodySectionName) (*Email, error) {
+	return parseMessageWithOptions(msg, section, false)
+}
+
+func parseMessageWithOptions(msg *imap.Message, section *imap.BodySectionName, downloadAttachments bool) (*Email, error) {
 	if msg == nil {
 		return nil, fmt.Errorf("message is nil")
 	}
 
 	email := &Email{
-		ID: msg.SeqNum,
+		ID:             msg.SeqNum,
+		AttachmentData: make(map[string][]byte),
 	}
 
 	// Parse envelope
@@ -237,6 +252,13 @@ func parseMessage(msg *imap.Message, section *imap.BodySectionName) (*Email, err
 			filename, _ := h.Filename()
 			if filename != "" {
 				email.Attachments = append(email.Attachments, filename)
+				// Read attachment data if requested
+				if downloadAttachments {
+					data, err := io.ReadAll(p.Body)
+					if err == nil {
+						email.AttachmentData[filename] = data
+					}
+				}
 			}
 		}
 	}
@@ -531,6 +553,35 @@ func saveReceivedEmail(email *Email) error {
 	// Write to file
 	if err := os.WriteFile(filepath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write email file: %v", err)
+	}
+	
+	return nil
+}
+
+// saveAttachmentsToDisk saves email attachments to the specified directory
+func saveAttachmentsToDisk(email *Email, dir string) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create attachment directory: %v", err)
+	}
+	
+	for filename, data := range email.AttachmentData {
+		// Sanitize filename
+		safeFilename := strings.ReplaceAll(filename, "/", "_")
+		safeFilename = strings.ReplaceAll(safeFilename, "..", "_")
+		
+		// Create a unique filename with timestamp
+		timestamp := email.Date.Format("20060102_150405")
+		finalFilename := fmt.Sprintf("%s_%s", timestamp, safeFilename)
+		
+		filepath := filepath.Join(dir, finalFilename)
+		
+		// Write attachment to file
+		if err := os.WriteFile(filepath, data, 0644); err != nil {
+			return fmt.Errorf("failed to save attachment %s: %v", filename, err)
+		}
+		
+		fmt.Printf("Saved attachment: %s\n", filepath)
 	}
 	
 	return nil
