@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -16,6 +17,7 @@ func InteractiveMode() error {
 	fmt.Println()
 	fmt.Println("Available commands:")
 	fmt.Println("  /read      - Read emails")
+	fmt.Println("  /search    - Search emails")
 	fmt.Println("  /send      - Send an email")
 	fmt.Println("  /report    - Generate email report")
 	fmt.Println("  /delete    - Delete emails")
@@ -87,6 +89,9 @@ func handleSlashCommand(command string) error {
 
 	case "/read":
 		return handleReadCommand(args)
+
+	case "/search":
+		return handleSearchCommand(args)
 
 	case "/send":
 		return handleSendCommand(args)
@@ -161,11 +166,18 @@ func printInteractiveHelp() {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 	fmt.Println("Slash Commands:")
-	fmt.Println("  /read [options]     - Read emails")
+	fmt.Println("  /read <email_id>    - Read a specific email by ID")
+	fmt.Println()
+	fmt.Println("  /search [options]   - Search emails")
 	fmt.Println("    --unread          - Show only unread emails")
 	fmt.Println("    --from <email>    - Filter by sender")
+	fmt.Println("    --to <email>      - Filter by recipient")
+	fmt.Println("    --subject <text>  - Filter by subject")
 	fmt.Println("    --days <n>        - Emails from last n days")
-	fmt.Println("    -n <number>       - Number of emails to read")
+	fmt.Println("    -n <number>       - Number of emails to show")
+	fmt.Println("    --local           - Search local storage only")
+	fmt.Println("    --sync            - Sync results to local storage")
+	fmt.Println("    --save            - Save results to files")
 	fmt.Println()
 	fmt.Println("  /send               - Interactive email composition")
 	fmt.Println("  /report             - Generate email report")
@@ -183,71 +195,35 @@ func printInteractiveHelp() {
 	fmt.Println("  configured AI provider for email-related assistance.")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  /read --unread")
+	fmt.Println("  /search --from support@openai.com --days 1")
+	fmt.Println("  /read 1322")
 	fmt.Println("  /send")
 	fmt.Println("  Summarize my emails from today")
 	fmt.Println("  Draft a reply to the last email from John")
 }
 
-// handleReadCommand handles the /read command
+// handleReadCommand handles the /read command - reads a specific email by ID
 func handleReadCommand(args []string) error {
-	opts := ReadOptions{
-		Limit: 20, // Default
+	if len(args) == 0 {
+		return fmt.Errorf("usage: /read <email_id>")
 	}
 
-	// Parse arguments
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--unread":
-			opts.UnreadOnly = true
-		case "--from":
-			if i+1 < len(args) {
-				opts.FromAddress = args[i+1]
-				i++
-			}
-		case "--days":
-			if i+1 < len(args) {
-				// Parse days - simplified for now
-				opts.Since = getTimeFromDays(args[i+1])
-				i++
-			}
-		case "-n":
-			if i+1 < len(args) {
-				// Parse number - simplified for now
-				if n := parseNumber(args[i+1]); n > 0 {
-					opts.Limit = n
-				}
-				i++
-			}
-		}
+	// Parse email ID
+	emailID := parseNumber(args[0])
+	if emailID <= 0 {
+		return fmt.Errorf("invalid email ID: %s", args[0])
 	}
 
-	client, err := NewClient()
+	fmt.Printf("Reading email ID %d...\n", emailID)
+	email, err := ReadEmailByID(uint32(emailID))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read email: %v", err)
 	}
 
-	fmt.Println("Reading emails and drafts...")
-	emails, err := client.ReadEmails(opts)
-	if err != nil {
-		return fmt.Errorf("failed to read emails: %v", err)
-	}
+	// Display email in markdown format
+	markdownContent := formatEmailAsMarkdown(email)
+	fmt.Print(markdownContent)
 
-	// Fetch drafts with the same options
-	draftsOpts := opts
-	draftsOpts.Limit = 10 // Fetch fewer drafts to balance with emails
-	drafts, err := client.ReadDrafts(draftsOpts)
-	if err != nil {
-		fmt.Printf("Note: Could not read drafts: %v\n", err)
-		// Continue without drafts
-	}
-
-	// Combine emails and drafts into a single list
-	allItems := make([]*Email, 0, len(emails)+len(drafts))
-	allItems = append(allItems, emails...)
-	allItems = append(allItems, drafts...)
-
-	fmt.Print(FormatEmailListWithDrafts(allItems, len(emails)))
 	return nil
 }
 
@@ -697,6 +673,46 @@ func ShowEnhancedInfo() error {
 	fmt.Printf("  Troubleshooting          mailos help troubleshoot\n")
 	fmt.Printf("  GitHub Repository        https://github.com/corp-os/emailos\n")
 
+	// System Architecture (LLM Context)
+	fmt.Println("\nSystem Architecture")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Architecture             Local-only email client\n")
+	fmt.Printf("  Protocol                 IMAP/SMTP direct connections\n")
+	fmt.Printf("  Storage                  Local config files (JSON)\n")
+	fmt.Printf("  Authentication           App-specific passwords\n")
+	fmt.Printf("  No External APIs         All operations are local\n")
+	fmt.Printf("  AI Integration           Via local CLI tools only\n")
+
+	// File Structure & Patterns
+	fmt.Println("\nFile Structure & Patterns")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Global Config            ~/.email/config.json\n")
+	fmt.Printf("  Local Config             ./.email/config.json\n")
+	fmt.Printf("  Draft Storage            ~/.email/drafts/\n")
+	fmt.Printf("  Email Storage            ./emails/ (when synced)\n")
+	fmt.Printf("  Templates                ~/.email/template.html\n")
+	fmt.Printf("  Attachments              ./attachments/ (downloads)\n")
+
+	// Data Flow & Operations
+	fmt.Println("\nData Flow & Operations")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Config Inheritance       Local overrides global settings\n")
+	fmt.Printf("  Email Reading            IMAP → Local display/storage\n")
+	fmt.Printf("  Email Sending            Local → SMTP → Provider\n")
+	fmt.Printf("  Draft Management         Local files → IMAP drafts\n")
+	fmt.Printf("  AI Queries               CLI tool → Email context\n")
+	fmt.Printf("  Template Processing      Markdown → HTML conversion\n")
+
+	// Debugging Context
+	fmt.Println("\nDebugging & Troubleshooting")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Verbose Logging          Use -v flag where available\n")
+	fmt.Printf("  Config Validation        mailos test\n")
+	fmt.Printf("  Connection Testing       mailos test --interactive\n")
+	fmt.Printf("  Provider Issues          Check app passwords\n")
+	fmt.Printf("  Permission Errors        Verify ~/.email/ access\n")
+	fmt.Printf("  AI Integration Issues    Check /provider configuration\n")
+
 	// Environment Information
 	fmt.Println("\nEnvironment")
 	fmt.Println("━━━━━━━━━━━")
@@ -704,6 +720,30 @@ func ShowEnhancedInfo() error {
 	if isGitRepo() {
 		fmt.Printf("  Git Repository           Yes\n")
 	}
+	
+	// State Information
+	localConfigExists := false
+	if _, err := os.Stat(".email/config.json"); err == nil {
+		localConfigExists = true
+	}
+	fmt.Printf("  Local Config Present     %t\n", localConfigExists)
+	
+	draftsDir := filepath.Join(os.Getenv("HOME"), ".email", "drafts")
+	if _, err := os.Stat(draftsDir); err == nil {
+		fmt.Printf("  Drafts Directory         Present\n")
+	} else {
+		fmt.Printf("  Drafts Directory         Not created\n")
+	}
+
+	// LLM Integration Context
+	fmt.Println("\nLLM Integration Context")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Command Pattern          mailos [command] [flags] [args]\n")
+	fmt.Printf("  Query Pattern            mailos 'natural language query'\n")
+	fmt.Printf("  File References          Use @ prefix for file autocomplete\n")
+	fmt.Printf("  Interactive Mode         Rich menu-driven interface\n")
+	fmt.Printf("  Error Handling           Commands return meaningful errors\n")
+	fmt.Printf("  State Management         Session-based account switching\n")
 	
 	return nil
 }

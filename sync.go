@@ -30,12 +30,13 @@ func SyncEmails(opts SyncOptions) error {
 
 	// Use new global inbox system for primary account
 	if config.Email != "" {
-		fmt.Printf("Syncing emails to global inbox for %s...\n", config.Email)
+		fmt.Printf("🚀 Using new global inbox system for %s...\n", config.Email)
 		if err := FetchEmailsIncremental(config, opts.Limit); err != nil {
-			fmt.Printf("Warning: Failed to sync to global inbox: %v\n", err)
+			fmt.Printf("❌ Warning: Failed to sync to global inbox: %v\n", err)
+			fmt.Printf("📦 Falling back to legacy sync method...\n")
 			// Continue with legacy sync as fallback
 		} else {
-			fmt.Printf("✓ Global inbox sync completed\n")
+			fmt.Printf("✅ Global inbox sync completed successfully!\n")
 			// Also update legacy sync time
 			if err := UpdateLastSyncTime(); err != nil && opts.Verbose {
 				fmt.Printf("Warning: failed to update last sync time: %v\n", err)

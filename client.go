@@ -213,7 +213,7 @@ func FormatEmailListWithDrafts(emails []*Email, emailCount int) string {
 			draftIndicator = " [DRAFT]"
 		}
 
-		result.WriteString(fmt.Sprintf("\n%d. From: %s\n", i+1, email.From))
+		result.WriteString(fmt.Sprintf("\n%d. From: %s\n", email.ID, email.From))
 		result.WriteString(fmt.Sprintf("   Subject: %s\n", email.Subject))
 		result.WriteString(fmt.Sprintf("   Date: %s%s\n", email.Date.Format("Jan 2, 2006 3:04 PM"), draftIndicator))
 

@@ -221,81 +221,7 @@ func configureGlobal(opts ConfigureOptions) error {
 	
 	if globalConfig != nil && opts.Email == "" {
 		// Global config already exists and no command-line options provided
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("                  EMAIL CONFIGURATION                   ")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println()
-		fmt.Println("📧 GLOBAL SETTINGS")
-		fmt.Println("──────────────────")
-		fmt.Printf("Email:     %s\n", globalConfig.Email)
-		if globalConfig.FromEmail != "" {
-			fmt.Printf("From:      %s\n", globalConfig.FromEmail)
-		}
-		if globalConfig.FromName != "" {
-			fmt.Printf("Name:      %s\n", globalConfig.FromName)
-		}
-		fmt.Printf("Provider:  %s\n", GetProviderName(globalConfig.Provider))
-		fmt.Printf("AI CLI:    %s\n", GetAICLIName(globalConfig.DefaultAICLI))
-		fmt.Println()
-		
-		// Check if local config exists
-		localConfigPath := filepath.Join(".email", "config.json")
-		localConfig, _ := LoadConfigFromPath(localConfigPath)
-		
-		if localConfig != nil {
-			fmt.Println("📁 LOCAL SETTINGS (in this folder)")
-			fmt.Println("──────────────────────────────────")
-			fmt.Printf("Email:     %s\n", localConfig.Email)
-			if localConfig.FromEmail != "" {
-				fmt.Printf("From:      %s\n", localConfig.FromEmail)
-			}
-			if localConfig.FromName != "" {
-				fmt.Printf("Name:      %s\n", localConfig.FromName)
-			}
-			fmt.Printf("Provider:  %s\n", GetProviderName(localConfig.Provider))
-			fmt.Printf("AI CLI:    %s\n", GetAICLIName(localConfig.DefaultAICLI))
-			fmt.Println()
-		}
-		
-		// New improved menu - start with individual config options
-		configOptions := []string{
-			"📧 Change from address (" + globalConfig.FromEmail + ")",
-			"👤 Change display name (" + globalConfig.FromName + ")",
-			"📨 Change email provider (" + GetProviderName(globalConfig.Provider) + ")",
-			"🤖 Change AI CLI (" + GetAICLIName(globalConfig.DefaultAICLI) + ")",
-			"⚙️  Advanced options...",
-		}
-		
-		// Handle empty values gracefully
-		if globalConfig.FromEmail == "" {
-			configOptions[0] = "📧 Set from address (not set)"
-		}
-		if globalConfig.FromName == "" {
-			configOptions[1] = "👤 Set display name (not set)"
-		}
-		
-		prompt := promptui.Select{
-			Label: "What would you like to configure?",
-			Items: configOptions,
-		}
-		
-		index, _, err := prompt.Run()
-		if err != nil {
-			return fmt.Errorf("selection cancelled: %v", err)
-		}
-		
-		switch index {
-		case 0: // Change from address
-			return changeFromAddress(globalConfig, globalConfigPath)
-		case 1: // Change display name
-			return changeDisplayName(globalConfig, globalConfigPath)
-		case 2: // Change email provider
-			return changeEmailProvider(globalConfig, globalConfigPath)
-		case 3: // Change AI CLI
-			return changeAICLI(globalConfig, globalConfigPath)
-		case 4: // Advanced options
-			return showAdvancedOptions(globalConfig, globalConfigPath, localConfig, localConfigPath)
-		}
+		return showAccountSwitcherInterface(globalConfig, globalConfigPath)
 	}
 	
 	// Create new global configuration
@@ -1200,6 +1126,153 @@ func showAdvancedOptions(globalConfig *Config, globalConfigPath string, localCon
 	}
 	
 	return nil
+}
+
+// showAccountSwitcherInterface displays the main interface with account switching
+func showAccountSwitcherInterface(globalConfig *Config, globalConfigPath string) error {
+	accounts := GetAllAccounts(globalConfig)
+	
+	// Get current active account
+	activeAccount := globalConfig.ActiveAccount
+	if activeAccount == "" {
+		activeAccount = globalConfig.Email
+	}
+	
+	// Check for local config
+	localConfigPath := filepath.Join(".email", "config.json")
+	localConfig, _ := LoadConfigFromPath(localConfigPath)
+	
+	// Use account selector to choose account
+	selectedEmail, newAccount, err := ShowAccountSelector()
+	if err != nil {
+		if err.Error() == "cancelled" {
+			return nil
+		}
+		return err
+	}
+	
+	// If a new account was created, add it to the config
+	if newAccount != nil {
+		if err := AddAccount(globalConfig, *newAccount); err != nil {
+			return fmt.Errorf("failed to add new account: %v", err)
+		}
+		accounts = GetAllAccounts(globalConfig)
+	}
+	
+	// Find the selected account
+	var selectedAccount *AccountConfig
+	for _, acc := range accounts {
+		if acc.Email == selectedEmail {
+			selectedAccount = &acc
+			break
+		}
+	}
+	
+	if selectedAccount == nil {
+		return fmt.Errorf("selected account not found")
+	}
+	
+	// Switch to the selected account
+	if err := SwitchAccount(globalConfig, selectedEmail); err != nil {
+		return fmt.Errorf("failed to switch account: %v", err)
+	}
+	
+	// Display the configuration interface for the selected account
+	return showConfigurationForAccount(selectedAccount, globalConfig, globalConfigPath, localConfig, localConfigPath)
+}
+
+// showConfigurationForAccount displays the configuration interface for a specific account
+func showConfigurationForAccount(account *AccountConfig, globalConfig *Config, globalConfigPath string, localConfig *Config, localConfigPath string) error {
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("                  EMAIL CONFIGURATION                   ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	
+	// Show currently active account
+	fmt.Println("📧 ACTIVE ACCOUNT")
+	fmt.Println("─────────────────")
+	fmt.Printf("Email:     %s\n", account.Email)
+	if account.FromEmail != "" && account.FromEmail != account.Email {
+		fmt.Printf("From:      %s\n", account.FromEmail)
+	}
+	if account.FromName != "" {
+		fmt.Printf("Name:      %s\n", account.FromName)
+	}
+	fmt.Printf("Provider:  %s\n", GetProviderName(account.Provider))
+	if account.Label != "" {
+		fmt.Printf("Type:      %s\n", account.Label)
+	}
+	fmt.Printf("AI CLI:    %s\n", GetAICLIName(globalConfig.DefaultAICLI))
+	fmt.Println()
+	
+	// Show local settings if they exist
+	if localConfig != nil {
+		fmt.Println("📁 LOCAL SETTINGS (in this folder)")
+		fmt.Println("──────────────────────────────────")
+		if localConfig.FromEmail != "" {
+			fmt.Printf("From:      %s\n", localConfig.FromEmail)
+		}
+		if localConfig.FromName != "" {
+			fmt.Printf("Name:      %s\n", localConfig.FromName)
+		}
+		if localConfig.DefaultAICLI != "" {
+			fmt.Printf("AI CLI:    %s\n", GetAICLIName(localConfig.DefaultAICLI))
+		}
+		fmt.Println()
+	}
+	
+	// Configuration options menu
+	configOptions := []string{
+		"📧 Switch account",
+		"📧 Change from address (" + getFromAddress(account) + ")",
+		"👤 Change display name (" + getAccountDisplayName(account) + ")",
+		"📨 Change email provider (" + GetProviderName(account.Provider) + ")",
+		"🤖 Change AI CLI (" + GetAICLIName(globalConfig.DefaultAICLI) + ")",
+		"⚙️  Advanced options...",
+	}
+	
+	prompt := promptui.Select{
+		Label: "What would you like to configure?",
+		Items: configOptions,
+	}
+	
+	index, _, err := prompt.Run()
+	if err != nil {
+		return fmt.Errorf("selection cancelled: %v", err)
+	}
+	
+	switch index {
+	case 0: // Switch account
+		return showAccountSwitcherInterface(globalConfig, globalConfigPath)
+	case 1: // Change from address
+		return changeFromAddress(globalConfig, globalConfigPath)
+	case 2: // Change display name
+		return changeDisplayName(globalConfig, globalConfigPath)
+	case 3: // Change email provider
+		return changeEmailProvider(globalConfig, globalConfigPath)
+	case 4: // Change AI CLI
+		return changeAICLI(globalConfig, globalConfigPath)
+	case 5: // Advanced options
+		return showAdvancedOptions(globalConfig, globalConfigPath, localConfig, localConfigPath)
+	}
+	
+	return nil
+}
+
+// getFromAddress returns the from address for display, handling empty values
+func getFromAddress(account *AccountConfig) string {
+	if account.FromEmail != "" {
+		return account.FromEmail
+	}
+	return account.Email
+}
+
+// getAccountDisplayName returns the display name for display, handling empty values
+func getAccountDisplayName(account *AccountConfig) string {
+	if account.FromName != "" {
+		return account.FromName
+	}
+	return "not set"
 }
 
 // copyReadmeToCurrentDir creates the EMAILOS.md file in current directory

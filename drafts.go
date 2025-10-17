@@ -54,6 +54,194 @@ type DraftEmail struct {
 	References  []string // For threading: chain of Message-IDs in the conversation
 }
 
+// SimpleDraftReference represents a simplified way to reference drafts
+type SimpleDraftReference struct {
+	Number  int    // User-friendly number (1, 2, 3...)
+	UID     uint32 // Internal IMAP UID
+	Subject string
+	To      []string
+	From    string
+}
+
+// GetSimpleDraftList returns drafts with user-friendly numbering
+func GetSimpleDraftList() ([]*SimpleDraftReference, error) {
+	config, err := LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Connect to IMAP server
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IMAP settings: %v", err)
+	}
+
+	addr := fmt.Sprintf("%s:%d", imapHost, imapPort)
+	
+	// Connect with TLS
+	tlsConfig := &tls.Config{ServerName: imapHost}
+	c, err := client.DialTLS(addr, tlsConfig)
+	if err != nil {
+		// Try without TLS
+		c, err = client.Dial(addr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to IMAP server: %v", err)
+		}
+		
+		// Start TLS if not already encrypted
+		if ok, _ := c.SupportStartTLS(); ok {
+			if err := c.StartTLS(tlsConfig); err != nil {
+				return nil, fmt.Errorf("failed to start TLS: %v", err)
+			}
+		}
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		return nil, fmt.Errorf("failed to login: %v", err)
+	}
+
+	// Find and select the Drafts folder
+	selectedFolder, err := findDraftsFolder(c)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find Drafts folder: %v", err)
+	}
+
+	// Select the drafts folder
+	mbox, err := c.Select(selectedFolder, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select drafts folder: %v", err)
+	}
+
+	if mbox.Messages == 0 {
+		return []*SimpleDraftReference{}, nil
+	}
+
+	// Fetch all drafts
+	seqSet := new(imap.SeqSet)
+	seqSet.AddRange(1, mbox.Messages)
+
+	messages := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+	
+	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
+
+	go func() {
+		done <- c.Fetch(seqSet, items, messages)
+	}()
+
+	var references []*SimpleDraftReference
+	count := 0
+	for msg := range messages {
+		count++
+		envelope := msg.Envelope
+		if envelope != nil {
+			toAddrs := []string{}
+			for _, addr := range envelope.To {
+				toAddrs = append(toAddrs, addr.Address())
+			}
+			
+			fromAddr := ""
+			if len(envelope.From) > 0 {
+				fromAddr = envelope.From[0].Address()
+			}
+			
+			ref := &SimpleDraftReference{
+				Number:  count,
+				UID:     msg.Uid,
+				Subject: envelope.Subject,
+				To:      toAddrs,
+				From:    fromAddr,
+			}
+			references = append(references, ref)
+		}
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to fetch drafts: %v", err)
+	}
+
+	return references, nil
+}
+
+// FindDraftByNumber finds a draft by its user-friendly number
+func FindDraftByNumber(number int) (*SimpleDraftReference, error) {
+	drafts, err := GetSimpleDraftList()
+	if err != nil {
+		return nil, err
+	}
+
+	if number < 1 || number > len(drafts) {
+		return nil, fmt.Errorf("draft #%d not found (available: 1-%d)", number, len(drafts))
+	}
+
+	return drafts[number-1], nil
+}
+
+// ListSimpleDrafts shows drafts with user-friendly numbering
+func ListSimpleDrafts() error {
+	drafts, err := GetSimpleDraftList()
+	if err != nil {
+		return err
+	}
+
+	if len(drafts) == 0 {
+		fmt.Println("📧 No drafts found")
+		return nil
+	}
+
+	fmt.Printf("📧 Found %d draft(s):\n\n", len(drafts))
+	for _, draft := range drafts {
+		toList := strings.Join(draft.To, ", ")
+		if toList == "" {
+			toList = "(no recipients)"
+		}
+		
+		fmt.Printf("#%d - %s\n", draft.Number, draft.Subject)
+		fmt.Printf("     To: %s\n", toList)
+		fmt.Printf("     UID: %d\n\n", draft.UID)
+	}
+
+	fmt.Println("Commands:")
+	fmt.Println("  mailos draft edit 1              # Edit draft #1")
+	fmt.Println("  mailos draft show 1              # Show draft #1 content")
+	fmt.Println("  mailos draft delete 1 --confirm  # Delete draft #1")
+
+	return nil
+}
+
+// EditDraftByNumber edits a draft by its user-friendly number
+func EditDraftByNumber(number int, subject string, body string, to []string) error {
+	draft, err := FindDraftByNumber(number)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Editing draft #%d (UID: %d): %s\n", draft.Number, draft.UID, draft.Subject)
+
+	// Update the draft using existing edit functionality
+	opts := DraftsOptions{
+		EditUID: draft.UID,
+	}
+	
+	// Only update fields that were provided
+	if subject != "" {
+		opts.Subject = subject
+	}
+	if body != "" {
+		opts.Body = body
+	}
+	if len(to) > 0 {
+		opts.To = to
+	} else {
+		// Preserve existing recipients
+		opts.To = draft.To
+	}
+
+	return DraftsCommand(opts)
+}
+
 // DraftsCommand generates draft emails based on user input
 func DraftsCommand(opts DraftsOptions) error {
 	// Handle listing drafts from IMAP or local storage

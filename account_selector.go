@@ -87,6 +87,26 @@ func (m accountSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = enteringEmail
 					m.inputValue = ""
 				}
+			
+			case tea.KeyTab:
+				// Quick switch: select current account and exit
+				if m.selectedIdx < len(m.accounts) {
+					m.selected = m.accounts[m.selectedIdx].Email
+					return m, tea.Quit
+				}
+				
+			default:
+				// Handle number keys for quick account selection
+				if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+					r := msg.Runes[0]
+					if r >= '1' && r <= '9' {
+						accountIndex := int(r - '1')
+						if accountIndex < len(m.accounts) {
+							m.selected = m.accounts[accountIndex].Email
+							return m, tea.Quit
+						}
+					}
+				}
 			}
 			
 		case enteringEmail:
@@ -184,8 +204,16 @@ func (m accountSelectorModel) View() string {
 		// Show account list
 		for i, acc := range m.accounts {
 			cursor := "  "
+			numberLabel := ""
+			if i < 9 {
+				numberLabel = fmt.Sprintf("%d. ", i+1)
+			}
+			
 			if i == m.selectedIdx {
 				cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Render("▸ ")
+				numberLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true).Render(numberLabel)
+			} else {
+				numberLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(numberLabel)
 			}
 			
 			label := acc.Email
@@ -197,7 +225,7 @@ func (m accountSelectorModel) View() string {
 				label = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("170")).Render(label)
 			}
 			
-			s.WriteString(fmt.Sprintf("%s%s\n", cursor, label))
+			s.WriteString(fmt.Sprintf("%s%s%s\n", cursor, numberLabel, label))
 		}
 		
 		// Add "Add New Account" option
@@ -214,7 +242,7 @@ func (m accountSelectorModel) View() string {
 		
 		// Help text
 		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).MarginTop(1)
-		s.WriteString(helpStyle.Render("\n↑↓ Navigate • Enter: Select • ESC: Cancel"))
+		s.WriteString(helpStyle.Render("\n↑↓ Navigate • Enter: Select • 1-9: Quick select • Tab: Quick switch • ESC: Cancel"))
 		
 	case enteringEmail:
 		s.WriteString("Enter email address:\n")

@@ -360,22 +360,54 @@ func parseMessageWithOptions(msg *imap.Message, section *imap.BodySectionName, d
 	// If no plain text body, strip HTML tags from HTML body
 	if email.Body == "" && email.BodyHTML != "" {
 		email.Body = StripHTMLTags(email.BodyHTML)
+	} else if email.Body != "" && strings.Contains(email.Body, "<") {
+		// If the body contains HTML tags, strip them
+		email.Body = StripHTMLTags(email.Body)
 	}
 
 	return email, nil
 }
 
 func StripHTMLTags(html string) string {
-	// Very basic HTML tag stripping
-	// In production, you'd want to use a proper HTML parser
 	result := html
+	
+	// Handle common HTML elements with proper spacing
+	result = strings.ReplaceAll(result, "<br><br>", "\n\n")
+	result = strings.ReplaceAll(result, "<br/><br/>", "\n\n")
+	result = strings.ReplaceAll(result, "<br /><br />", "\n\n")
 	result = strings.ReplaceAll(result, "<br>", "\n")
 	result = strings.ReplaceAll(result, "<br/>", "\n")
 	result = strings.ReplaceAll(result, "<br />", "\n")
-	result = strings.ReplaceAll(result, "</p>", "\n\n")
-	result = strings.ReplaceAll(result, "</div>", "\n")
 	
-	// Remove all other tags
+	// Handle paragraphs and divs
+	result = strings.ReplaceAll(result, "</p>", "\n\n")
+	result = strings.ReplaceAll(result, "<p>", "")
+	result = strings.ReplaceAll(result, "</div>", "\n")
+	result = strings.ReplaceAll(result, "<div>", "")
+	
+	// Handle list items
+	result = strings.ReplaceAll(result, "</li>", "\n")
+	result = strings.ReplaceAll(result, "<li>", "• ")
+	result = strings.ReplaceAll(result, "</ul>", "\n")
+	result = strings.ReplaceAll(result, "<ul>", "")
+	result = strings.ReplaceAll(result, "</ol>", "\n")
+	result = strings.ReplaceAll(result, "<ol>", "")
+	
+	// Handle headers
+	result = strings.ReplaceAll(result, "</h1>", "\n\n")
+	result = strings.ReplaceAll(result, "</h2>", "\n\n")
+	result = strings.ReplaceAll(result, "</h3>", "\n\n")
+	result = strings.ReplaceAll(result, "</h4>", "\n\n")
+	result = strings.ReplaceAll(result, "</h5>", "\n\n")
+	result = strings.ReplaceAll(result, "</h6>", "\n\n")
+	result = strings.ReplaceAll(result, "<h1>", "")
+	result = strings.ReplaceAll(result, "<h2>", "")
+	result = strings.ReplaceAll(result, "<h3>", "")
+	result = strings.ReplaceAll(result, "<h4>", "")
+	result = strings.ReplaceAll(result, "<h5>", "")
+	result = strings.ReplaceAll(result, "<h6>", "")
+	
+	// Remove all remaining tags
 	for strings.Contains(result, "<") && strings.Contains(result, ">") {
 		start := strings.Index(result, "<")
 		end := strings.Index(result[start:], ">")
@@ -385,14 +417,29 @@ func StripHTMLTags(html string) string {
 		result = result[:start] + result[start+end+1:]
 	}
 	
-	// Clean up whitespace
+	// Clean up excessive whitespace while preserving paragraph breaks
 	lines := strings.Split(result, "\n")
 	cleanLines := make([]string, 0, len(lines))
+	previousLineEmpty := false
+	
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line != "" {
+		
+		// Skip empty lines that follow other empty lines (no more than one empty line in a row)
+		if line == "" {
+			if !previousLineEmpty {
+				cleanLines = append(cleanLines, "")
+				previousLineEmpty = true
+			}
+		} else {
 			cleanLines = append(cleanLines, line)
+			previousLineEmpty = false
 		}
+	}
+	
+	// Remove trailing empty lines
+	for len(cleanLines) > 0 && cleanLines[len(cleanLines)-1] == "" {
+		cleanLines = cleanLines[:len(cleanLines)-1]
 	}
 	
 	return strings.Join(cleanLines, "\n")
@@ -695,4 +742,96 @@ func saveAttachmentsToDisk(email *Email, dir string) error {
 	}
 	
 	return nil
+}
+
+// ReadEmailByID reads a specific email by its ID and returns the full content
+func ReadEmailByID(emailID uint32) (*Email, error) {
+	config, err := LoadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %v", err)
+	}
+
+	// Get IMAP settings from provider
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IMAP settings: %v", err)
+	}
+
+	// Connect to IMAP server
+	var c *client.Client
+	if imapPort == 993 {
+		// Use TLS
+		tlsConfig := &tls.Config{ServerName: imapHost}
+		c, err = client.DialTLS(fmt.Sprintf("%s:%d", imapHost, imapPort), tlsConfig)
+	} else {
+		// Use plain connection
+		c, err = client.Dial(fmt.Sprintf("%s:%d", imapHost, imapPort))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to IMAP server: %v", err)
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		return nil, fmt.Errorf("failed to login: %v", err)
+	}
+
+	// Select inbox
+	_, err = c.Select("INBOX", false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select inbox: %v", err)
+	}
+
+	// Search for all messages to find the one with matching ID
+	criteria := imap.NewSearchCriteria()
+	ids, err := c.Search(criteria)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search messages: %v", err)
+	}
+
+	// Check if the requested ID exists
+	var foundID uint32
+	for _, id := range ids {
+		if id == emailID {
+			foundID = id
+			break
+		}
+	}
+
+	if foundID == 0 {
+		return nil, fmt.Errorf("email with ID %d not found", emailID)
+	}
+
+	// Create sequence set for the specific ID
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(foundID)
+
+	// Fetch the specific message
+	messages := make(chan *imap.Message, 1)
+	section := &imap.BodySectionName{}
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Fetch(seqSet, []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, section.FetchItem()}, messages)
+	}()
+
+	var email *Email
+	for msg := range messages {
+		var err error
+		email, err = parseMessageWithOptions(msg, section, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse message: %v", err)
+		}
+		break
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to fetch message: %v", err)
+	}
+
+	if email == nil {
+		return nil, fmt.Errorf("email with ID %d not found", emailID)
+	}
+
+	return email, nil
 }
