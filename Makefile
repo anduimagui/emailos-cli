@@ -16,6 +16,11 @@ install:
 	@go install $(BINARY_PATH)
 	@echo "Installation complete. Run 'mailos' to get started."
 
+# Install locally for system-wide use on Mac
+local-install:
+	@echo "Installing $(BINARY_NAME) locally for system-wide use..."
+	@./build-local.sh
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning..."
@@ -57,16 +62,17 @@ lint:
 # Show help
 help:
 	@echo "Available commands:"
-	@echo "  make build    - Build the binary"
-	@echo "  make install  - Install to GOPATH"
-	@echo "  make clean    - Clean build artifacts"
-	@echo "  make deps     - Download dependencies"
-	@echo "  make test     - Run tests"
-	@echo "  make setup    - Run the setup wizard"
-	@echo "  make run      - Build and run"
-	@echo "  make fmt      - Format code"
-	@echo "  make lint     - Run linter"
-	@echo "  make help     - Show this help"
+	@echo "  make build         - Build the binary"
+	@echo "  make install       - Install to GOPATH"
+	@echo "  make local-install - Install system-wide on Mac"
+	@echo "  make clean         - Clean build artifacts"
+	@echo "  make deps          - Download dependencies"
+	@echo "  make test          - Run tests"
+	@echo "  make setup         - Run the setup wizard"
+	@echo "  make run           - Build and run"
+	@echo "  make fmt           - Format code"
+	@echo "  make lint          - Run linter"
+	@echo "  make help          - Show this help"
 
 # Default target
 all: deps build

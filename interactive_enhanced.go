@@ -30,17 +30,19 @@ func InteractiveModeWithMenuOptions(showLogo bool, showInitialStatus bool) error
 		}
 	}
 	
-	// Check for MAILOS_USE_BUBBLETEA to use new Bubble Tea UI (default)
-	useBubbleTea := os.Getenv("MAILOS_USE_BUBBLETEA") != "false"
-	
-	// Check for legacy UI modes
+	// Check which UI implementation to use
+	// Priority order: OpenTUI > BubbleTea > Ink > Classic
+	useOpenTUI := os.Getenv("MAILOS_USE_OPENTUI") == "true"
 	useInkUI := os.Getenv("MAILOS_USE_INK") == "true"
 	
-	if useBubbleTea && !useInkUI {
-		// Use the new Bubble Tea implementation by default
-		return InteractiveModeWithBubbleTea()
+	// OpenTUI implementation (new - experimental)
+	if useOpenTUI {
+		return InteractiveModeWithOpenTUI()
 	}
 	
+	// BubbleTea implementation removed - functionality moved to OLD directory
+	
+	// React Ink implementation (legacy)
 	if useInkUI {
 		return InteractiveModeWithReactInk()
 	}

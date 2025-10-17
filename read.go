@@ -26,6 +26,8 @@ type Email struct {
 	BodyHTML        string
 	Attachments     []string
 	AttachmentData  map[string][]byte // Map of filename to attachment data
+	MessageID       string             // Message-ID header for threading
+	InReplyTo       string             // In-Reply-To header for threading
 }
 
 type ReadOptions struct {
@@ -42,6 +44,45 @@ type ReadOptions struct {
 }
 
 func Read(opts ReadOptions) ([]*Email, error) {
+	// If LocalOnly is set, try to read from global inbox first
+	if opts.LocalOnly {
+		config, err := LoadConfig()
+		if err == nil && config.Email != "" {
+			emails, err := GetEmailsFromInbox(config.Email, opts)
+			if err == nil {
+				fmt.Printf("Read %d emails from global inbox\n", len(emails))
+				return emails, nil
+			}
+		}
+		// Fallback to old local storage method
+		return readFromLocalStorage(opts)
+	}
+	
+	// For live IMAP reading, also sync to global inbox if SyncLocal is set
+	emails, err := ReadFromFolder(opts, "INBOX")
+	if err == nil && opts.SyncLocal {
+		// Auto-sync emails to global inbox
+		config, configErr := LoadConfig()
+		if configErr == nil && config.Email != "" {
+			// Load existing inbox
+			inboxData, inboxErr := LoadGlobalInbox(config.Email)
+			if inboxErr == nil {
+				// Add new emails
+				inboxData.Emails = append(inboxData.Emails, emails...)
+				// Remove duplicates and sort
+				inboxData.Emails = removeDuplicateEmails(inboxData.Emails)
+				// Save
+				SaveGlobalInbox(config.Email, inboxData)
+				fmt.Printf("Synced %d emails to global inbox\n", len(emails))
+			}
+		}
+	}
+	
+	return emails, err
+}
+
+// ReadFromFolder reads emails from a specific IMAP folder
+func ReadFromFolder(opts ReadOptions, folder string) ([]*Email, error) {
 	// If local only, read from local storage
 	if opts.LocalOnly {
 		return readFromLocalStorage(opts)
@@ -78,10 +119,61 @@ func Read(opts ReadOptions) ([]*Email, error) {
 		return nil, fmt.Errorf("failed to login: %v", err)
 	}
 
-	// Select inbox
-	_, err = c.Select("INBOX", false)
+	// Select the specified folder
+	_, err = c.Select(folder, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to select inbox: %v", err)
+		// Try alternative folder names for Drafts
+		if folder == "Drafts" {
+			// Common draft folder names by provider
+			draftFolders := []string{
+				"[Gmail]/Drafts",     // Gmail
+				"INBOX.Drafts",       // Some IMAP servers
+				"Draft",              // Alternative singular
+				"INBOX.Draft",        // Alternative singular with INBOX prefix
+				"[Imap]/Drafts",      // Some providers
+				"[Mail]/Drafts",      // Some providers
+			}
+			
+			folderFound := false
+			for _, draftFolder := range draftFolders {
+				_, err = c.Select(draftFolder, false)
+				if err == nil {
+					folderFound = true
+					break
+				}
+			}
+			
+			if !folderFound {
+				// List all folders to help debug
+				mailboxes := make(chan *imap.MailboxInfo, 10)
+				done := make(chan error, 1)
+				go func() {
+					done <- c.List("", "*", mailboxes)
+				}()
+				
+				var availableFolders []string
+				for m := range mailboxes {
+					availableFolders = append(availableFolders, m.Name)
+					// Check if this might be a drafts folder
+					if strings.Contains(strings.ToLower(m.Name), "draft") {
+						// Try to select it
+						_, err = c.Select(m.Name, false)
+						if err == nil {
+							folderFound = true
+							break
+						}
+					}
+				}
+				<-done
+				
+				if !folderFound {
+					// Return a more helpful error message
+					return nil, fmt.Errorf("failed to find Drafts folder. Available folders: %v", availableFolders)
+				}
+			}
+		} else if err != nil {
+			return nil, fmt.Errorf("failed to select %s folder: %v", folder, err)
+		}
 	}
 
 	// Build search criteria
@@ -193,6 +285,8 @@ func parseMessageWithOptions(msg *imap.Message, section *imap.BodySectionName, d
 	if msg.Envelope != nil {
 		email.Subject = msg.Envelope.Subject
 		email.Date = msg.Envelope.Date
+		email.MessageID = msg.Envelope.MessageId
+		email.InReplyTo = msg.Envelope.InReplyTo
 
 		// Parse From
 		if len(msg.Envelope.From) > 0 {
@@ -265,13 +359,13 @@ func parseMessageWithOptions(msg *imap.Message, section *imap.BodySectionName, d
 
 	// If no plain text body, strip HTML tags from HTML body
 	if email.Body == "" && email.BodyHTML != "" {
-		email.Body = stripHTMLTags(email.BodyHTML)
+		email.Body = StripHTMLTags(email.BodyHTML)
 	}
 
 	return email, nil
 }
 
-func stripHTMLTags(html string) string {
+func StripHTMLTags(html string) string {
 	// Very basic HTML tag stripping
 	// In production, you'd want to use a proper HTML parser
 	result := html
@@ -357,6 +451,16 @@ func MarkAsRead(ids []uint32) error {
 }
 
 func DeleteEmails(ids []uint32) error {
+	return DeleteEmailsFromFolder(ids, "INBOX")
+}
+
+// DeleteDrafts deletes the given draft IDs from the Drafts folder
+func DeleteDrafts(ids []uint32) error {
+	return DeleteEmailsFromFolder(ids, "Drafts")
+}
+
+// DeleteEmailsFromFolder deletes emails from a specific folder
+func DeleteEmailsFromFolder(ids []uint32, folder string) error {
 	config, err := LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %v", err)
@@ -386,10 +490,16 @@ func DeleteEmails(ids []uint32) error {
 		return fmt.Errorf("failed to login: %v", err)
 	}
 
-	// Select inbox
-	_, err = c.Select("INBOX", false)
+	// Select the specified folder
+	_, err = c.Select(folder, false)
 	if err != nil {
-		return fmt.Errorf("failed to select inbox: %v", err)
+		// Try with [Gmail]/Drafts for Gmail
+		if folder == "Drafts" && config.Provider == ProviderGmail {
+			_, err = c.Select("[Gmail]/Drafts", false)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to select %s folder: %v", folder, err)
+		}
 	}
 
 	// Create sequence set

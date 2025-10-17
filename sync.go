@@ -28,6 +28,22 @@ func SyncEmails(opts SyncOptions) error {
 		return fmt.Errorf("failed to load config: %v", err)
 	}
 
+	// Use new global inbox system for primary account
+	if config.Email != "" {
+		fmt.Printf("Syncing emails to global inbox for %s...\n", config.Email)
+		if err := FetchEmailsIncremental(config, opts.Limit); err != nil {
+			fmt.Printf("Warning: Failed to sync to global inbox: %v\n", err)
+			// Continue with legacy sync as fallback
+		} else {
+			fmt.Printf("✓ Global inbox sync completed\n")
+			// Also update legacy sync time
+			if err := UpdateLastSyncTime(); err != nil && opts.Verbose {
+				fmt.Printf("Warning: failed to update last sync time: %v\n", err)
+			}
+			return nil
+		}
+	}
+
 	// Set default base directory from config or use default
 	if opts.BaseDir == "" {
 		if config.SyncDir != "" {
@@ -174,6 +190,22 @@ func RunAutoSyncIfNeeded() error {
 
 	fmt.Println("Auto-syncing emails (last sync was more than 24 hours ago)...")
 	
+	// Use new global inbox system
+	config, err := LoadConfig()
+	if err == nil && config.Email != "" {
+		if err := FetchEmailsIncremental(config, 50); err != nil {
+			fmt.Printf("Warning: Failed to auto-sync to global inbox: %v\n", err)
+			// Fallback to legacy sync
+		} else {
+			// Update last sync time
+			if err := UpdateLastSyncTime(); err != nil {
+				fmt.Printf("Warning: failed to update last sync time: %v\n", err)
+			}
+			return nil
+		}
+	}
+	
+	// Legacy fallback
 	opts := SyncOptions{
 		Limit:       50, // Reasonable default for auto-sync
 		IncludeRead: false,
@@ -320,6 +352,8 @@ func parseMessageForSync(msg *imap.Message, section *imap.BodySectionName) (*Ema
 	if msg.Envelope != nil {
 		email.Subject = msg.Envelope.Subject
 		email.Date = msg.Envelope.Date
+		email.MessageID = msg.Envelope.MessageId
+		email.InReplyTo = msg.Envelope.InReplyTo
 		
 		// Parse From
 		if len(msg.Envelope.From) > 0 {

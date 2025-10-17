@@ -153,7 +153,7 @@ func handleInteractiveRead() error {
 	}
 
 	opts := ReadOptions{
-		Limit: 10,
+		Limit: 20,
 	}
 
 	switch index {
@@ -212,20 +212,34 @@ func handleInteractiveRead() error {
 		return err
 	}
 
-	fmt.Println("\nReading emails...")
+	fmt.Println("\nReading emails and drafts...")
 	emails, err := client.ReadEmails(opts)
 	if err != nil {
 		return fmt.Errorf("failed to read emails: %v", err)
 	}
 
-	fmt.Print(FormatEmailList(emails))
+	// Fetch drafts with the same options
+	draftsOpts := opts
+	draftsOpts.Limit = 10 // Fetch fewer drafts to balance with emails
+	drafts, err := client.ReadDrafts(draftsOpts)
+	if err != nil {
+		fmt.Printf("Note: Could not read drafts: %v\n", err)
+		// Continue without drafts
+	}
+
+	// Combine emails and drafts into a single list
+	allItems := make([]*Email, 0, len(emails)+len(drafts))
+	allItems = append(allItems, emails...)
+	allItems = append(allItems, drafts...)
+
+	fmt.Print(FormatEmailListWithDrafts(allItems, len(emails)))
 	return nil
 }
 
 // handleInteractiveSend provides guided email composition
 func handleInteractiveSend() error {
 	fmt.Println("\n━━━ Compose New Email ━━━")
-	
+
 	// Get recipients
 	toPrompt := promptui.Prompt{
 		Label: "To (comma-separated for multiple)",
@@ -289,7 +303,7 @@ func handleInteractiveSend() error {
 	}
 	fmt.Printf("Subject: %s\n", subject)
 	fmt.Printf("Body:\n%s\n", body)
-	
+
 	confirmPrompt := promptui.Select{
 		Label: "Send this email?",
 		Items: []string{"Send", "Cancel"},
@@ -306,7 +320,7 @@ func handleInteractiveSend() error {
 		Subject: subject,
 		Body:    body,
 	}
-	
+
 	if cc != "" {
 		msg.CC = strings.Split(cc, ",")
 	}
@@ -331,33 +345,33 @@ func handleInteractiveReport() error {
 	if err != nil {
 		return err
 	}
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("\nGenerating report for: %s\n", selectedRange.Name)
-	
+
 	opts := ReadOptions{
 		Since: selectedRange.Since,
 		Limit: 1000,
 	}
-	
+
 	emails, err := client.ReadEmails(opts)
 	if err != nil {
 		return fmt.Errorf("failed to read emails: %v", err)
 	}
-	
+
 	var filteredEmails []*Email
 	for _, email := range emails {
 		if email.Date.After(selectedRange.Since) && email.Date.Before(selectedRange.Until) {
 			filteredEmails = append(filteredEmails, email)
 		}
 	}
-	
+
 	report := GenerateEmailReport(filteredEmails, *selectedRange)
-	
+
 	// Ask if they want to save to file
 	savePrompt := promptui.Select{
 		Label: "Save report to file?",
@@ -376,11 +390,11 @@ func handleInteractiveReport() error {
 			}
 		}
 	}
-	
+
 	if saveIdx != 1 { // Not "Save to file" only
 		fmt.Println(report)
 	}
-	
+
 	return nil
 }
 
@@ -390,32 +404,32 @@ func handleInteractiveUnsubscribe() error {
 		Label: "Enter sender email (or press Enter for all)",
 	}
 	from, _ := fromPrompt.Run()
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
-	
+
 	opts := ReadOptions{
 		Limit: 20,
 	}
 	if from != "" {
 		opts.FromAddress = from
 	}
-	
+
 	fmt.Println("\nSearching for unsubscribe links...")
 	links, err := client.FindUnsubscribeLinks(opts)
 	if err != nil {
 		return fmt.Errorf("failed to find unsubscribe links: %v", err)
 	}
-	
+
 	if len(links) == 0 {
 		fmt.Println("No unsubscribe links found.")
 		return nil
 	}
-	
+
 	fmt.Print(GetUnsubscribeReport(links))
-	
+
 	if len(links) > 0 && len(links[0].Links) > 0 {
 		openPrompt := promptui.Select{
 			Label: "Open first link in browser?",
@@ -427,7 +441,7 @@ func handleInteractiveUnsubscribe() error {
 			// Implementation would open the link
 		}
 	}
-	
+
 	return nil
 }
 
@@ -468,12 +482,12 @@ func handleInteractiveDelete() error {
 		if err != nil {
 			return err
 		}
-		
+
 		ids := parseEmailIDs(idsStr)
 		if len(ids) == 0 {
 			return fmt.Errorf("no valid IDs provided")
 		}
-		
+
 		confirmPrompt := promptui.Select{
 			Label: fmt.Sprintf("Delete %d email(s)?", len(ids)),
 			Items: []string{"Yes", "No"},
@@ -483,12 +497,12 @@ func handleInteractiveDelete() error {
 			fmt.Println("Deletion cancelled.")
 			return nil
 		}
-		
+
 		if err := client.DeleteEmails(ids); err != nil {
 			return fmt.Errorf("failed to delete emails: %v", err)
 		}
 		fmt.Printf("✓ Deleted %d email(s)\n", len(ids))
-		
+
 	case 1: // Delete from sender
 		fromPrompt := promptui.Prompt{
 			Label: "Enter sender email address",
@@ -497,22 +511,22 @@ func handleInteractiveDelete() error {
 		if err != nil {
 			return err
 		}
-		
+
 		opts := ReadOptions{
 			FromAddress: from,
 			Limit:       100,
 		}
-		
+
 		emails, err := client.ReadEmails(opts)
 		if err != nil {
 			return fmt.Errorf("failed to find emails: %v", err)
 		}
-		
+
 		if len(emails) == 0 {
 			fmt.Println("No emails found from that sender.")
 			return nil
 		}
-		
+
 		confirmPrompt := promptui.Select{
 			Label: fmt.Sprintf("Delete %d email(s) from %s?", len(emails), from),
 			Items: []string{"Yes", "No"},
@@ -522,17 +536,17 @@ func handleInteractiveDelete() error {
 			fmt.Println("Deletion cancelled.")
 			return nil
 		}
-		
+
 		var emailIds []uint32
 		for _, email := range emails {
 			emailIds = append(emailIds, email.ID)
 		}
-		
+
 		if err := client.DeleteEmails(emailIds); err != nil {
 			return fmt.Errorf("failed to delete emails: %v", err)
 		}
 		fmt.Printf("✓ Deleted %d email(s)\n", len(emails))
-		
+
 	case 2: // Delete by subject
 		subjectPrompt := promptui.Prompt{
 			Label: "Enter subject keyword",
@@ -541,22 +555,22 @@ func handleInteractiveDelete() error {
 		if err != nil {
 			return err
 		}
-		
+
 		opts := ReadOptions{
 			Subject: subject,
 			Limit:   100,
 		}
-		
+
 		emails, err := client.ReadEmails(opts)
 		if err != nil {
 			return fmt.Errorf("failed to find emails: %v", err)
 		}
-		
+
 		if len(emails) == 0 {
 			fmt.Println("No emails found with that subject.")
 			return nil
 		}
-		
+
 		fmt.Printf("Found %d email(s) with subject containing '%s'\n", len(emails), subject)
 		for i, email := range emails {
 			if i < 5 {
@@ -566,7 +580,7 @@ func handleInteractiveDelete() error {
 		if len(emails) > 5 {
 			fmt.Printf("  ... and %d more\n", len(emails)-5)
 		}
-		
+
 		confirmPrompt := promptui.Select{
 			Label: fmt.Sprintf("Delete all %d email(s)?", len(emails)),
 			Items: []string{"Yes", "No"},
@@ -576,18 +590,18 @@ func handleInteractiveDelete() error {
 			fmt.Println("Deletion cancelled.")
 			return nil
 		}
-		
+
 		var emailIds []uint32
 		for _, email := range emails {
 			emailIds = append(emailIds, email.ID)
 		}
-		
+
 		if err := client.DeleteEmails(emailIds); err != nil {
 			return fmt.Errorf("failed to delete emails: %v", err)
 		}
 		fmt.Printf("✓ Deleted %d email(s)\n", len(emails))
 	}
-	
+
 	return nil
 }
 
@@ -600,21 +614,21 @@ func handleInteractiveMarkRead() error {
 	if err != nil {
 		return err
 	}
-	
+
 	ids := parseEmailIDs(idsStr)
 	if len(ids) == 0 {
 		return fmt.Errorf("no valid IDs provided")
 	}
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
-	
+
 	if err := client.MarkEmailsAsRead(ids); err != nil {
 		return fmt.Errorf("failed to mark emails as read: %v", err)
 	}
-	
+
 	fmt.Printf("✓ Marked %d email(s) as read\n", len(ids))
 	return nil
 }
@@ -658,14 +672,14 @@ func handleInteractiveConfigure() error {
 	case 5:
 		return nil
 	}
-	
+
 	return nil
 }
 
 // handleCustomReadFilters handles custom email filters
 func handleCustomReadFilters() error {
 	opts := ReadOptions{}
-	
+
 	// Unread filter
 	unreadPrompt := promptui.Select{
 		Label: "Show unread only?",
@@ -673,7 +687,7 @@ func handleCustomReadFilters() error {
 	}
 	unreadIdx, _, _ := unreadPrompt.Run()
 	opts.UnreadOnly = (unreadIdx == 1)
-	
+
 	// From filter
 	fromPrompt := promptui.Prompt{
 		Label: "From address (or press Enter to skip)",
@@ -682,7 +696,7 @@ func handleCustomReadFilters() error {
 	if from != "" {
 		opts.FromAddress = from
 	}
-	
+
 	// Subject filter
 	subjectPrompt := promptui.Prompt{
 		Label: "Subject contains (or press Enter to skip)",
@@ -691,7 +705,7 @@ func handleCustomReadFilters() error {
 	if subject != "" {
 		opts.Subject = subject
 	}
-	
+
 	// Date filter
 	datePrompt := promptui.Select{
 		Label: "Date range",
@@ -712,7 +726,7 @@ func handleCustomReadFilters() error {
 		days, _ := daysPrompt.Run()
 		opts.Since = getTimeFromDays(days)
 	}
-	
+
 	// Limit
 	limitPrompt := promptui.Prompt{
 		Label:   "Maximum emails to fetch",
@@ -724,19 +738,33 @@ func handleCustomReadFilters() error {
 	} else {
 		opts.Limit = 20
 	}
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
-	
-	fmt.Println("\nReading emails with custom filters...")
+
+	fmt.Println("\nReading emails and drafts with custom filters...")
 	emails, err := client.ReadEmails(opts)
 	if err != nil {
 		return fmt.Errorf("failed to read emails: %v", err)
 	}
-	
-	fmt.Print(FormatEmailList(emails))
+
+	// Fetch drafts with the same options
+	draftsOpts := opts
+	draftsOpts.Limit = 10 // Fetch fewer drafts to balance with emails
+	drafts, err := client.ReadDrafts(draftsOpts)
+	if err != nil {
+		fmt.Printf("Note: Could not read drafts: %v\n", err)
+		// Continue without drafts
+	}
+
+	// Combine emails and drafts into a single list
+	allItems := make([]*Email, 0, len(emails)+len(drafts))
+	allItems = append(allItems, emails...)
+	allItems = append(allItems, drafts...)
+
+	fmt.Print(FormatEmailListWithDrafts(allItems, len(emails)))
 	return nil
 }
 
@@ -746,33 +774,33 @@ func SelectAndConfigureAIProvider() error {
 	if err != nil {
 		return err
 	}
-	
+
 	if provider == "configure" {
 		return Configure()
 	}
-	
+
 	if provider == "none" {
 		fmt.Println("Continuing without AI provider.")
 		return nil
 	}
-	
+
 	// Load and update config
 	config, err := LoadConfig()
 	if err != nil {
 		return err
 	}
-	
+
 	config.DefaultAICLI = provider
 	if err := SaveConfig(config); err != nil {
 		return fmt.Errorf("failed to save configuration: %v", err)
 	}
-	
+
 	// Also save to slash config
 	slashConfig := &SlashConfig{
 		DefaultProvider: provider,
 	}
 	saveSlashConfig(slashConfig)
-	
+
 	fmt.Printf("✓ AI Provider set to: %s\n", GetAICLIName(provider))
 	return nil
 }
@@ -780,17 +808,17 @@ func SelectAndConfigureAIProvider() error {
 // loadSlashConfig loads the slash command configuration
 func loadSlashConfig() *SlashConfig {
 	configPath := ".email/.slash_config.json"
-	
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return &SlashConfig{}
 	}
-	
+
 	var config SlashConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return &SlashConfig{}
 	}
-	
+
 	return &config
 }
 
@@ -798,23 +826,23 @@ func loadSlashConfig() *SlashConfig {
 func saveSlashConfig(config *SlashConfig) error {
 	configDir := ".email"
 	configPath := filepath.Join(configDir, ".slash_config.json")
-	
+
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return err
 	}
-	
+
 	// Ensure .email is in .gitignore
 	if err := EnsureGitIgnore(); err != nil {
 		// Don't fail the operation, just warn
 		fmt.Printf("Note: Could not update .gitignore: %v\n", err)
 	}
-	
+
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(configPath, data, 0644)
 }
 

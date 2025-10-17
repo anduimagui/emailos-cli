@@ -25,6 +25,7 @@ type DraftsOptions struct {
 	DraftCount    int
 	List          bool   // List drafts from IMAP
 	Read          bool   // Read drafts from IMAP
+	EditUID       uint32 // UID of draft to edit (0 means create new)
 	// Email composition fields (same as send command)
 	To            []string
 	CC            []string
@@ -49,6 +50,8 @@ type DraftEmail struct {
 	Attachments []string
 	SendAfter   *time.Time
 	Priority    string
+	InReplyTo   string   // For threading: the Message-ID of the email being replied to
+	References  []string // For threading: chain of Message-IDs in the conversation
 }
 
 // DraftsCommand generates draft emails based on user input
@@ -61,6 +64,11 @@ func DraftsCommand(opts DraftsOptions) error {
 		}
 		// Then list from IMAP
 		return listDraftsFromIMAP(opts.Read)
+	}
+
+	// Handle editing an existing draft
+	if opts.EditUID > 0 {
+		return editDraftInIMAP(opts)
 	}
 
 	// Ensure local .email directories exist
@@ -148,11 +156,12 @@ func DraftsCommand(opts DraftsOptions) error {
 		}
 		
 		// Save to IMAP Drafts folder (without sending)
-		if err := saveDraftToIMAP(draft); err != nil {
+		uid, err := saveDraftToIMAP(draft)
+		if err != nil {
 			// Don't fail the whole operation if IMAP save fails
 			fmt.Printf("⚠️  Could not save draft to email account: %v\n", err)
 		} else {
-			fmt.Printf("✓ Saved draft to email account's Drafts folder (not sent)\n")
+			fmt.Printf("✓ Saved draft to email account's Drafts folder (UID: %d)\n", uid)
 		}
 	}
 
@@ -288,11 +297,11 @@ func createSingleDraftInteractively() (DraftEmail, error) {
 }
 
 
-// saveDraftToIMAP saves a draft email to the IMAP Drafts folder
-func saveDraftToIMAP(draft DraftEmail) error {
+// saveDraftToIMAP saves a draft email to the IMAP Drafts folder and returns its UID
+func saveDraftToIMAP(draft DraftEmail) (uint32, error) {
 	config, err := LoadConfig()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %v", err)
+		return 0, fmt.Errorf("failed to load config: %v", err)
 	}
 
 	// Build the email message in RFC 822 format
@@ -321,6 +330,29 @@ func saveDraftToIMAP(draft DraftEmail) error {
 	message.WriteString(fmt.Sprintf("Subject: %s\r\n", draft.Subject))
 	message.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	
+	// Add threading headers if this is a reply
+	if draft.InReplyTo != "" {
+		// Ensure Message-ID is wrapped in angle brackets
+		inReplyTo := draft.InReplyTo
+		if !strings.HasPrefix(inReplyTo, "<") {
+			inReplyTo = "<" + inReplyTo + ">"
+		}
+		message.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", inReplyTo))
+	}
+	
+	if len(draft.References) > 0 {
+		// Ensure all Message-IDs in References are wrapped in angle brackets
+		var refs []string
+		for _, ref := range draft.References {
+			if !strings.HasPrefix(ref, "<") {
+				refs = append(refs, "<"+ref+">")
+			} else {
+				refs = append(refs, ref)
+			}
+		}
+		message.WriteString(fmt.Sprintf("References: %s\r\n", strings.Join(refs, " ")))
+	}
+	
 	// Add a draft header to indicate this is a draft
 	message.WriteString("X-Draft: true\r\n")
 	if draft.Priority != "" && draft.Priority != "normal" {
@@ -335,7 +367,7 @@ func saveDraftToIMAP(draft DraftEmail) error {
 	// Connect to IMAP server
 	imapHost, imapPort, err := config.GetIMAPSettings()
 	if err != nil {
-		return fmt.Errorf("failed to get IMAP settings: %v", err)
+		return 0, fmt.Errorf("failed to get IMAP settings: %v", err)
 	}
 
 	addr := fmt.Sprintf("%s:%d", imapHost, imapPort)
@@ -347,13 +379,13 @@ func saveDraftToIMAP(draft DraftEmail) error {
 		// Try without TLS
 		c, err = client.Dial(addr)
 		if err != nil {
-			return fmt.Errorf("failed to connect to IMAP server: %v", err)
+			return 0, fmt.Errorf("failed to connect to IMAP server: %v", err)
 		}
 		
 		// Start TLS if not already encrypted
 		if ok, _ := c.SupportStartTLS(); ok {
 			if err := c.StartTLS(tlsConfig); err != nil {
-				return fmt.Errorf("failed to start TLS: %v", err)
+				return 0, fmt.Errorf("failed to start TLS: %v", err)
 			}
 		}
 	}
@@ -361,7 +393,7 @@ func saveDraftToIMAP(draft DraftEmail) error {
 
 	// Login
 	if err := c.Login(config.Email, config.Password); err != nil {
-		return fmt.Errorf("failed to login: %v", err)
+		return 0, fmt.Errorf("failed to login: %v", err)
 	}
 
 	// Find the Drafts folder
@@ -389,7 +421,7 @@ func saveDraftToIMAP(draft DraftEmail) error {
 	}
 	
 	if err := <-done; err != nil {
-		return fmt.Errorf("failed to list folders: %v", err)
+		return 0, fmt.Errorf("failed to list folders: %v", err)
 	}
 	
 	// If no drafts folder found, try common names
@@ -426,10 +458,37 @@ func saveDraftToIMAP(draft DraftEmail) error {
 	
 	err = c.Append(selectedFolder, flags, date, strings.NewReader(messageWithCRLF))
 	if err != nil {
-		return fmt.Errorf("failed to save draft to %s folder: %v", selectedFolder, err)
+		return 0, fmt.Errorf("failed to save draft to %s folder: %v", selectedFolder, err)
 	}
 
-	return nil
+	// Get the UID of the newly appended message
+	// Note: This is a simplified approach. In production, you might need to use UIDPLUS extension
+	// or search for the message you just added
+	mbox, err := c.Select(selectedFolder, false)
+	if err != nil {
+		return 0, fmt.Errorf("failed to select folder to get UID: %v", err)
+	}
+	
+	// The last message should be the one we just added (in most cases)
+	// This is not guaranteed but works for most IMAP servers
+	if mbox.Messages > 0 {
+		seqSet := new(imap.SeqSet)
+		seqSet.AddNum(mbox.Messages) // Get the last message
+		
+		messages := make(chan *imap.Message, 1)
+		done := make(chan error, 1)
+		go func() {
+			done <- c.Fetch(seqSet, []imap.FetchItem{imap.FetchUid}, messages)
+		}()
+		
+		if msg := <-messages; msg != nil {
+			<-done
+			return msg.Uid, nil
+		}
+		<-done
+	}
+
+	return 0, nil
 }
 
 // listDraftsFromIMAP lists or reads drafts from the IMAP Drafts folder
@@ -500,7 +559,7 @@ func listDraftsFromIMAP(showFullContent bool) error {
 	done := make(chan error, 1)
 	
 	section := &imap.BodySectionName{}
-	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, imap.FetchInternalDate}
+	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, imap.FetchInternalDate, imap.FetchUid}
 	if showFullContent {
 		items = append(items, section.FetchItem())
 	}
@@ -516,7 +575,7 @@ func listDraftsFromIMAP(showFullContent bool) error {
 		// Display draft information
 		envelope := msg.Envelope
 		if envelope != nil {
-			fmt.Printf("\n📧 Draft #%d\n", count)
+			fmt.Printf("\n📧 Draft #%d (UID: %d)\n", count, msg.Uid)
 			
 			// From
 			if len(envelope.From) > 0 {
@@ -650,4 +709,128 @@ func findDraftsFolder(c *client.Client) (string, error) {
 	}
 	
 	return selectedFolder, nil
+}
+
+// editDraftInIMAP edits an existing draft in the IMAP Drafts folder
+func editDraftInIMAP(opts DraftsOptions) error {
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %v", err)
+	}
+
+	// Connect to IMAP server
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get IMAP settings: %v", err)
+	}
+
+	addr := fmt.Sprintf("%s:%d", imapHost, imapPort)
+	
+	// Connect with TLS
+	tlsConfig := &tls.Config{ServerName: imapHost}
+	c, err := client.DialTLS(addr, tlsConfig)
+	if err != nil {
+		// Try without TLS
+		c, err = client.Dial(addr)
+		if err != nil {
+			return fmt.Errorf("failed to connect to IMAP server: %v", err)
+		}
+		
+		// Start TLS if not already encrypted
+		if ok, _ := c.SupportStartTLS(); ok {
+			if err := c.StartTLS(tlsConfig); err != nil {
+				return fmt.Errorf("failed to start TLS: %v", err)
+			}
+		}
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		return fmt.Errorf("failed to login: %v", err)
+	}
+
+	// Find and select the Drafts folder
+	selectedFolder, err := findDraftsFolder(c)
+	if err != nil {
+		return fmt.Errorf("failed to find Drafts folder: %v", err)
+	}
+
+	// Select the drafts folder
+	if _, err := c.Select(selectedFolder, false); err != nil {
+		return fmt.Errorf("failed to select drafts folder: %v", err)
+	}
+
+	// Fetch the existing draft by UID
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(opts.EditUID)
+
+	messages := make(chan *imap.Message, 1)
+	done := make(chan error, 1)
+	
+	section := &imap.BodySectionName{}
+	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, imap.FetchUid, section.FetchItem()}
+
+	go func() {
+		done <- c.UidFetch(seqSet, items, messages)
+	}()
+
+	var oldMsg *imap.Message
+	for msg := range messages {
+		oldMsg = msg
+		break
+	}
+
+	if err := <-done; err != nil {
+		return fmt.Errorf("failed to fetch draft: %v", err)
+	}
+
+	if oldMsg == nil {
+		return fmt.Errorf("draft with UID %d not found", opts.EditUID)
+	}
+
+	// Delete the old draft
+	deleteSet := new(imap.SeqSet)
+	deleteSet.AddNum(opts.EditUID)
+	
+	// Mark as deleted
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.DeletedFlag}
+	if err := c.UidStore(deleteSet, item, flags, nil); err != nil {
+		return fmt.Errorf("failed to mark old draft for deletion: %v", err)
+	}
+
+	// Expunge to actually delete
+	if err := c.Expunge(nil); err != nil {
+		return fmt.Errorf("failed to expunge old draft: %v", err)
+	}
+
+	// Create the updated draft
+	draft := DraftEmail{
+		To:          opts.To,
+		CC:          opts.CC,
+		BCC:         opts.BCC,
+		Subject:     opts.Subject,
+		Body:        opts.Body,
+		Attachments: opts.Attachments,
+		Priority:    opts.Priority,
+	}
+
+	// If body was specified from file, read it
+	if opts.FileBody != "" {
+		fileContent, err := os.ReadFile(opts.FileBody)
+		if err != nil {
+			return fmt.Errorf("failed to read body from file %s: %v", opts.FileBody, err)
+		}
+		draft.Body = string(fileContent)
+	}
+
+	// Save the updated draft
+	newUID, err := saveDraftToIMAP(draft)
+	if err != nil {
+		return fmt.Errorf("failed to save updated draft: %v", err)
+	}
+
+	fmt.Printf("✓ Updated draft (old UID: %d, new UID: %d)\n", opts.EditUID, newUID)
+	return nil
 }

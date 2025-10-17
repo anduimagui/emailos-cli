@@ -15,21 +15,22 @@ import (
 var APP_SITE = AppSite // Using constant from constants.go
 
 type Config struct {
-	Provider      string `json:"provider"`
-	Email         string `json:"email"`
-	Password      string `json:"password"`
-	FromName      string `json:"from_name,omitempty"`
-	FromEmail     string `json:"from_email,omitempty"`
-	ProfileImage  string `json:"profile_image,omitempty"`
-	LicenseKey    string `json:"license_key,omitempty"`
-	DefaultAICLI  string `json:"default_ai_cli,omitempty"`
-	LastSyncTime  string `json:"last_sync_time,omitempty"`
-	AutoSync      bool   `json:"auto_sync,omitempty"`
-	SyncDir       string `json:"sync_dir,omitempty"`
-	LocalStorageDir string `json:"local_storage_dir,omitempty"`
-	SignatureOverride string `json:"signature_override,omitempty"`
-	Accounts      []AccountConfig `json:"accounts,omitempty"`
-	ActiveAccount string `json:"active_account,omitempty"`
+	Provider          string          `json:"provider"`
+	Email             string          `json:"email"`
+	Password          string          `json:"password"`
+	FromName          string          `json:"from_name,omitempty"`
+	FromEmail         string          `json:"from_email,omitempty"`
+	ProfileImage      string          `json:"profile_image,omitempty"`
+	LicenseKey        string          `json:"license_key,omitempty"`
+	DefaultAICLI      string          `json:"default_ai_cli,omitempty"`
+	LastSyncTime      string          `json:"last_sync_time,omitempty"`
+	AutoSync          bool            `json:"auto_sync,omitempty"`
+	SyncDir           string          `json:"sync_dir,omitempty"`
+	LocalStorageDir   string          `json:"local_storage_dir,omitempty"`
+	SignatureOverride string          `json:"signature_override,omitempty"`
+	Accounts          []AccountConfig `json:"accounts,omitempty"`
+	ActiveAccount     string          `json:"active_account,omitempty"`
+	Debug             bool            `json:"debug,omitempty"`
 }
 
 type AccountConfig struct {
@@ -49,6 +50,29 @@ type LegacyConfig struct {
 	FromEmail     string `json:"fromEmail"`
 }
 
+// IsDebugMode returns true if debug mode is enabled via environment variable or config
+func IsDebugMode() bool {
+	// Check environment variable first
+	if os.Getenv("MAILOS_DEBUG") == "true" {
+		return true
+	}
+
+	// Check config file
+	config, err := LoadConfig()
+	if err == nil && config.Debug {
+		return true
+	}
+
+	return false
+}
+
+// DebugPrintf prints debug messages only if debug mode is enabled
+func DebugPrintf(format string, args ...interface{}) {
+	if IsDebugMode() {
+		fmt.Printf(format, args...)
+	}
+}
+
 func GetConfigPath() (string, error) {
 	// First check for local .email/config.json in current directory
 	localConfig := filepath.Join(".email", "config.json")
@@ -57,7 +81,7 @@ func GetConfigPath() (string, error) {
 		absPath, _ := filepath.Abs(localConfig)
 		return absPath, nil
 	}
-	
+
 	// Fall back to global config in home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -72,14 +96,14 @@ func LoadConfig() (*Config, error) {
 		// Don't fail loading config, just warn
 		fmt.Printf("Note: Could not create email directories: %v\n", err)
 	}
-	
+
 	// First check for local config
 	localConfig := filepath.Join(".email", "config.json")
 	if _, err := os.Stat(localConfig); err == nil {
 		// Local config exists, load it with inheritance from global
 		return LoadConfigWithInheritance()
 	}
-	
+
 	// No local config, load global config only
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -94,14 +118,14 @@ func LoadConfigWithInheritance() (*Config, error) {
 	// Load local config
 	localConfigPath := filepath.Join(".email", "config.json")
 	localConfig, _ := loadConfigFromPath(localConfigPath) // Ignore error, might just be partial config
-	
+
 	// If local config is nil or invalid, try to load global
 	if localConfig == nil || localConfig.Provider == "" {
 		// Create a new config to populate
 		if localConfig == nil {
 			localConfig = &Config{}
 		}
-		
+
 		// Load global config
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -109,14 +133,14 @@ func LoadConfigWithInheritance() (*Config, error) {
 		}
 		globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
 		globalConfig, _ := loadConfigFromPath(globalConfigPath) // Ignore error, might not exist
-		
+
 		if globalConfig == nil {
 			return nil, fmt.Errorf("no valid configuration found")
 		}
-		
+
 		// Copy all fields from global
 		*localConfig = *globalConfig
-		
+
 		// Now reload the local config to get any local overrides
 		localData, err := os.ReadFile(localConfigPath)
 		if err == nil {
@@ -141,7 +165,7 @@ func LoadConfigWithInheritance() (*Config, error) {
 			}
 		}
 	}
-	
+
 	return localConfig, nil
 }
 
@@ -169,7 +193,7 @@ func loadConfigFromPath(configPath string) (*Config, error) {
 		if legacy.EmailProvider == "fastgmail" {
 			provider = "gmail"
 		}
-		
+
 		config = Config{
 			Provider: provider,
 			Email:    legacy.FromEmail,
@@ -217,7 +241,7 @@ func ConfigExists() bool {
 // EnsureGitIgnore ensures that .email is added to .gitignore in the current directory
 func EnsureGitIgnore() error {
 	gitignorePath := ".gitignore"
-	
+
 	// Check if .gitignore exists
 	content, err := os.ReadFile(gitignorePath)
 	if err != nil {
@@ -227,7 +251,7 @@ func EnsureGitIgnore() error {
 		// .gitignore doesn't exist, create it with .email entry
 		return os.WriteFile(gitignorePath, []byte(".email/\n"), 0644)
 	}
-	
+
 	// Check if .email is already in .gitignore
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
@@ -237,26 +261,26 @@ func EnsureGitIgnore() error {
 			return nil
 		}
 	}
-	
+
 	// Add .email to .gitignore
 	file, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	
+
 	// Add newline if file doesn't end with one
 	if len(content) > 0 && content[len(content)-1] != '\n' {
 		if _, err := file.WriteString("\n"); err != nil {
 			return err
 		}
 	}
-	
+
 	// Add .email entry
 	if _, err := file.WriteString(".email/\n"); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -272,7 +296,7 @@ func SaveConfigToPath(config *Config, configPath string) error {
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return err
 	}
-	
+
 	// If creating a local .email folder, add it to .gitignore
 	if strings.HasPrefix(configPath, ".email/") || strings.HasPrefix(configPath, "./.email/") {
 		if err := EnsureGitIgnore(); err != nil {
@@ -298,7 +322,7 @@ func GetConfigLocation() string {
 		absPath, _ := filepath.Abs(localConfig)
 		return "local: " + absPath
 	}
-	
+
 	homeDir, _ := os.UserHomeDir()
 	return "global: " + filepath.Join(homeDir, ".email", "config.json")
 }
@@ -308,7 +332,7 @@ func GetConfigLocation() string {
 func GetAllAccounts(config *Config) []AccountConfig {
 	accounts := []AccountConfig{}
 	accountMap := make(map[string]AccountConfig) // Use map to avoid duplicates
-	
+
 	// Always load accounts from home directory config (not local)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -326,7 +350,7 @@ func GetAllAccounts(config *Config) []AccountConfig {
 		}
 		return accounts
 	}
-	
+
 	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
 	globalConfig, err := loadConfigFromPath(globalConfigPath)
 	if err != nil || globalConfig == nil {
@@ -344,10 +368,10 @@ func GetAllAccounts(config *Config) []AccountConfig {
 		}
 		return accounts
 	}
-	
+
 	// Group accounts by provider to identify main vs sub-emails
 	providerGroups := make(map[string][]AccountConfig)
-	
+
 	// Add main account as provider main account
 	if globalConfig.Email != "" {
 		mainAcc := AccountConfig{
@@ -362,14 +386,14 @@ func GetAllAccounts(config *Config) []AccountConfig {
 		providerGroups[globalConfig.Provider] = append(providerGroups[globalConfig.Provider], mainAcc)
 		accountMap[globalConfig.Email] = mainAcc
 	}
-	
+
 	// Process additional accounts from accounts array
 	for _, acc := range globalConfig.Accounts {
 		// Skip if already exists (avoid duplicates)
 		if _, exists := accountMap[acc.Email]; exists {
 			continue
 		}
-		
+
 		// Inherit password and provider from main account if not specified
 		if acc.Password == "" && acc.Provider == globalConfig.Provider {
 			acc.Password = globalConfig.Password
@@ -377,7 +401,7 @@ func GetAllAccounts(config *Config) []AccountConfig {
 		if acc.Provider == "" {
 			acc.Provider = globalConfig.Provider
 		}
-		
+
 		// Set label based on whether it's same provider as main or different
 		if acc.Label == "" {
 			if acc.Provider == globalConfig.Provider {
@@ -386,11 +410,11 @@ func GetAllAccounts(config *Config) []AccountConfig {
 				acc.Label = "Account"
 			}
 		}
-		
+
 		providerGroups[acc.Provider] = append(providerGroups[acc.Provider], acc)
 		accountMap[acc.Email] = acc
 	}
-	
+
 	// Add from email as sub-email if different from main email
 	if globalConfig.FromEmail != "" && globalConfig.FromEmail != globalConfig.Email {
 		if _, exists := accountMap[globalConfig.FromEmail]; !exists {
@@ -407,11 +431,11 @@ func GetAllAccounts(config *Config) []AccountConfig {
 			accountMap[globalConfig.FromEmail] = fromAcc
 		}
 	}
-	
+
 	// Sort accounts: Primary first, then by provider groups
 	var primaryAccount *AccountConfig
 	var providerAccounts []AccountConfig
-	
+
 	// Find primary account
 	for _, acc := range accountMap {
 		if acc.Email == globalConfig.Email || acc.Label == "Primary" {
@@ -419,12 +443,12 @@ func GetAllAccounts(config *Config) []AccountConfig {
 			break
 		}
 	}
-	
+
 	// Add primary account first
 	if primaryAccount != nil {
 		accounts = append(accounts, *primaryAccount)
 	}
-	
+
 	// Add sub-emails from the same provider as primary
 	if primaryAccount != nil {
 		primaryProviderAccounts := providerGroups[primaryAccount.Provider]
@@ -434,7 +458,7 @@ func GetAllAccounts(config *Config) []AccountConfig {
 			}
 		}
 	}
-	
+
 	// Add accounts from other providers
 	for provider, providerAccs := range providerGroups {
 		if primaryAccount != nil && provider == primaryAccount.Provider {
@@ -444,10 +468,10 @@ func GetAllAccounts(config *Config) []AccountConfig {
 			providerAccounts = append(providerAccounts, acc)
 		}
 	}
-	
+
 	// Add all provider accounts to final list
 	accounts = append(accounts, providerAccounts...)
-	
+
 	return accounts
 }
 
@@ -462,39 +486,39 @@ func LoadAccountConfig(accountEmail string) (*Config, error) {
 	if accountEmail == "" {
 		return LoadConfig()
 	}
-	
+
 	// Load home directory config
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %v", err)
 	}
-	
+
 	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
 	globalConfig, err := loadConfigFromPath(globalConfigPath)
 	if err != nil || globalConfig == nil {
 		return nil, fmt.Errorf("failed to load configuration from home directory: %v", err)
 	}
-	
+
 	// Get all accounts
 	accounts := GetAllAccounts(globalConfig)
-	
+
 	// Find the requested account
 	for _, acc := range accounts {
 		if acc.Email == accountEmail {
 			// Create a new config with the selected account as primary
 			config := &Config{
-				Provider:     acc.Provider,
-				Email:        acc.Email,
-				Password:     acc.Password,
-				FromName:     acc.FromName,
-				FromEmail:    acc.FromEmail,
-				ProfileImage: acc.ProfileImage,
-				LicenseKey:   globalConfig.LicenseKey,
-				DefaultAICLI: globalConfig.DefaultAICLI,
+				Provider:      acc.Provider,
+				Email:         acc.Email,
+				Password:      acc.Password,
+				FromName:      acc.FromName,
+				FromEmail:     acc.FromEmail,
+				ProfileImage:  acc.ProfileImage,
+				LicenseKey:    globalConfig.LicenseKey,
+				DefaultAICLI:  globalConfig.DefaultAICLI,
 				ActiveAccount: acc.Email,
-				Accounts:     globalConfig.Accounts,
+				Accounts:      globalConfig.Accounts,
 			}
-			
+
 			// If account doesn't have all fields, inherit from global config
 			if config.Provider == "" {
 				config.Provider = globalConfig.Provider
@@ -505,37 +529,37 @@ func LoadAccountConfig(accountEmail string) (*Config, error) {
 			if config.FromEmail == "" {
 				config.FromEmail = acc.Email
 			}
-			
+
 			return config, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("account %s not found in configuration", accountEmail)
 }
 
 // SwitchAccount switches the active email account for sending
 func SwitchAccount(config *Config, accountEmail string) error {
 	accounts := GetAllAccounts(config)
-	
+
 	for _, acc := range accounts {
 		if acc.Email == accountEmail {
 			// Update FromEmail to send as the selected account
 			config.FromEmail = acc.Email
-			
+
 			// Also update FromName if the account has one
 			if acc.FromName != "" {
 				config.FromName = acc.FromName
 			}
-			
+
 			// Set as active account
 			config.ActiveAccount = accountEmail
-			
+
 			// Don't save to file - this is session-only
 			// The change persists in memory for the current session
 			return nil
 		}
 	}
-	
+
 	return fmt.Errorf("account %s not found", accountEmail)
 }
 
@@ -549,7 +573,7 @@ func AddAccount(config *Config, account AccountConfig) error {
 			return SaveConfig(config)
 		}
 	}
-	
+
 	// Add new account
 	config.Accounts = append(config.Accounts, account)
 	return SaveConfig(config)
@@ -563,13 +587,13 @@ func SetLocalAccountPreference(accountEmail string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %v", err)
 	}
-	
+
 	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
 	globalConfig, err := loadConfigFromPath(globalConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to load global configuration: %v", err)
 	}
-	
+
 	// Verify account exists
 	accountFound := false
 	var selectedAccount AccountConfig
@@ -581,28 +605,28 @@ func SetLocalAccountPreference(accountEmail string) error {
 			break
 		}
 	}
-	
+
 	if !accountFound {
 		return fmt.Errorf("account %s not found", accountEmail)
 	}
-	
+
 	// Create local .email directory if it doesn't exist
 	localConfigDir := ".email"
 	if err := os.MkdirAll(localConfigDir, 0700); err != nil {
 		return fmt.Errorf("failed to create local .email directory: %v", err)
 	}
-	
+
 	// Load existing local config or create new one
 	localConfigPath := filepath.Join(localConfigDir, "config.json")
 	var localConfig Config
-	
+
 	// Try to load existing local config
 	existingData, err := os.ReadFile(localConfigPath)
 	if err == nil {
 		// Parse existing config, ignore errors to start fresh if corrupted
 		json.Unmarshal(existingData, &localConfig)
 	}
-	
+
 	// Update the local config with the selected account as active
 	localConfig.ActiveAccount = accountEmail
 	localConfig.FromEmail = selectedAccount.FromEmail
@@ -610,23 +634,23 @@ func SetLocalAccountPreference(accountEmail string) error {
 		localConfig.FromEmail = accountEmail
 	}
 	localConfig.FromName = selectedAccount.FromName
-	
+
 	// Save the local config
 	data, err := json.MarshalIndent(localConfig, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal local config: %v", err)
 	}
-	
+
 	if err := os.WriteFile(localConfigPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write local config: %v", err)
 	}
-	
+
 	// Ensure .gitignore includes .email
 	if err := EnsureGitIgnore(); err != nil {
 		// Don't fail, just warn
 		fmt.Printf("Note: Could not update .gitignore: %v\n", err)
 	}
-	
+
 	return nil
 }
 
@@ -637,22 +661,22 @@ func GetLocalAccountPreference() string {
 	if err != nil {
 		return ""
 	}
-	
+
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
 		return ""
 	}
-	
+
 	// Return active account if set
 	if config.ActiveAccount != "" {
 		return config.ActiveAccount
 	}
-	
+
 	// Fall back to FromEmail if set
 	if config.FromEmail != "" {
 		return config.FromEmail
 	}
-	
+
 	return ""
 }
 
@@ -681,7 +705,7 @@ func GetEmailStorageDir() (string, error) {
 	if info, err := os.Stat(localDir); err == nil && info.IsDir() {
 		return filepath.Abs(localDir)
 	}
-	
+
 	// Fall back to home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -723,12 +747,12 @@ func EnsureEmailDirectories() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Create main .email directory
 	if err := os.MkdirAll(baseDir, 0700); err != nil {
 		return err
 	}
-	
+
 	// Create subdirectories
 	subdirs := []string{"sent", "received", "drafts"}
 	for _, subdir := range subdirs {
@@ -737,7 +761,7 @@ func EnsureEmailDirectories() error {
 			return err
 		}
 	}
-	
+
 	// Ensure .gitignore is updated
 	if strings.HasPrefix(baseDir, ".email") || strings.Contains(baseDir, "/.email") {
 		if err := EnsureGitIgnore(); err != nil {
@@ -745,7 +769,7 @@ func EnsureEmailDirectories() error {
 			fmt.Printf("Note: Could not update .gitignore: %v\n", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -754,9 +778,9 @@ func CreateReadme() error {
 	if err != nil {
 		return err
 	}
-	
+
 	readmePath := filepath.Join(homeDir, ".email", "README.md")
-	
+
 	content := `# EmailOS Configuration
 
 This directory contains your email client configuration.
@@ -806,6 +830,6 @@ If you're having issues:
 
 For more information, visit: ` + GitHubRepo + `
 `
-	
+
 	return os.WriteFile(readmePath, []byte(content), 0644)
 }

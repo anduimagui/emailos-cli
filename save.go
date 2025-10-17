@@ -91,7 +91,7 @@ func formatEmailAsMarkdown(email *Email) string {
 	if body == "" && email.BodyHTML != "" {
 		// If only HTML is available, note it
 		content.WriteString("*[HTML email - plain text version not available]*\n\n")
-		body = stripHTMLTags(email.BodyHTML)
+		body = StripHTMLTags(email.BodyHTML)
 	}
 	
 	content.WriteString(body)

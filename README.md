@@ -244,6 +244,38 @@ Type `/` to see available commands or use directly:
 | Linux | ARM64 | ✅ Supported |
 | Windows | x64 | ✅ Supported |
 
+## ⚙️ Configuration
+
+### Environment Variables
+
+MailOS supports various environment variables for customization:
+
+```bash
+# Enable debug mode for detailed logging
+export MAILOS_DEBUG=true
+
+# Choose UI framework (default: BubbleTea)
+export MAILOS_USE_BUBBLETEA=true
+export MAILOS_USE_OPENTUI=false
+export MAILOS_USE_INK=false
+
+# Hide logo on startup
+export MAILOS_NO_LOGO=true
+
+# Set suggestion mode
+export MAILOS_SUGGESTION_MODE=enhanced
+```
+
+### Debug Mode
+
+When `MAILOS_DEBUG=true` is set, MailOS will output detailed debug information including:
+- Key press events and their codes
+- Network requests and responses
+- Configuration loading details
+- AI provider interactions
+
+This is especially useful for troubleshooting issues with key handling (like the delete key on macOS) or understanding how the application processes input.
+
 ## 📦 Installation Options
 
 ### npm (All Platforms)

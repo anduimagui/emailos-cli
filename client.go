@@ -44,7 +44,31 @@ func (c *Client) SendEmail(to []string, subject, body string, cc []string, bcc [
 
 // ReadEmails reads emails with the given options
 func (c *Client) ReadEmails(opts ReadOptions) ([]*Email, error) {
+	// Try to read from global inbox first if LocalOnly is set
+	if opts.LocalOnly {
+		if c.config.Email != "" {
+			emails, err := GetEmailsFromInbox(c.config.Email, opts)
+			if err == nil && len(emails) > 0 {
+				return emails, nil
+			}
+		}
+		// Fallback to old local storage method
+		return readFromLocalStorage(opts)
+	}
 	return Read(opts)
+}
+
+// SyncEmails fetches emails incrementally and stores in global inbox
+func (c *Client) SyncEmails(limit int) error {
+	return FetchEmailsIncremental(c.config, limit)
+}
+
+// ReadEmailsFromInbox reads emails from the global inbox
+func (c *Client) ReadEmailsFromInbox(opts ReadOptions) ([]*Email, error) {
+	if c.config.Email == "" {
+		return nil, fmt.Errorf("no email account configured")
+	}
+	return GetEmailsFromInbox(c.config.Email, opts)
 }
 
 // MarkEmailsAsRead marks the given email IDs as read
@@ -55,6 +79,16 @@ func (c *Client) MarkEmailsAsRead(ids []uint32) error {
 // DeleteEmails deletes the given email IDs
 func (c *Client) DeleteEmails(ids []uint32) error {
 	return DeleteEmails(ids)
+}
+
+// DeleteDrafts deletes the given draft IDs from the Drafts folder
+func (c *Client) DeleteDrafts(ids []uint32) error {
+	return DeleteDrafts(ids)
+}
+
+// ReadDrafts reads drafts from the IMAP Drafts folder
+func (c *Client) ReadDrafts(opts ReadOptions) ([]*Email, error) {
+	return ReadFromFolder(opts, "Drafts")
 }
 
 // FindUnsubscribeLinks finds unsubscribe links in emails
@@ -119,7 +153,7 @@ func (c *Client) GetConfig() *Config {
 func MarkdownToHTML(markdown string) string {
 	// Use blackfriday for markdown parsing
 	html := blackfriday.Run([]byte(markdown))
-	
+
 	// Wrap in basic HTML template
 	template := `<!DOCTYPE html>
 <html>
@@ -162,16 +196,27 @@ func (c *Client) GetProviderInfo() string {
 
 // FormatEmailList formats a list of emails for display
 func FormatEmailList(emails []*Email) string {
+	return FormatEmailListWithDrafts(emails, len(emails))
+}
+
+// FormatEmailListWithDrafts formats a list of emails and drafts for display
+func FormatEmailListWithDrafts(emails []*Email, emailCount int) string {
 	if len(emails) == 0 {
-		return "No emails found."
+		return "No emails or drafts found."
 	}
 
 	var result strings.Builder
 	for i, email := range emails {
+		isDraft := i >= emailCount
+		draftIndicator := ""
+		if isDraft {
+			draftIndicator = " [DRAFT]"
+		}
+
 		result.WriteString(fmt.Sprintf("\n%d. From: %s\n", i+1, email.From))
 		result.WriteString(fmt.Sprintf("   Subject: %s\n", email.Subject))
-		result.WriteString(fmt.Sprintf("   Date: %s\n", email.Date.Format("Jan 2, 2006 3:04 PM")))
-		
+		result.WriteString(fmt.Sprintf("   Date: %s%s\n", email.Date.Format("Jan 2, 2006 3:04 PM"), draftIndicator))
+
 		// Show preview of body
 		preview := email.Body
 		if len(preview) > 100 {
@@ -179,11 +224,11 @@ func FormatEmailList(emails []*Email) string {
 		}
 		preview = strings.ReplaceAll(preview, "\n", " ")
 		result.WriteString(fmt.Sprintf("   Preview: %s\n", preview))
-		
+
 		if len(email.Attachments) > 0 {
 			result.WriteString(fmt.Sprintf("   Attachments: %s\n", strings.Join(email.Attachments, ", ")))
 		}
 	}
-	
+
 	return result.String()
 }

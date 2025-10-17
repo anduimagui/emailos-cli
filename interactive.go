@@ -129,7 +129,7 @@ func handleAIQuery(query string) error {
 	if config.DefaultAICLI == "" || config.DefaultAICLI == "none" {
 		fmt.Println("No AI provider configured.")
 		fmt.Println("Would you like to configure one now? (y/n)")
-		
+
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
 		if strings.ToLower(strings.TrimSpace(response)) == "y" {
@@ -137,7 +137,7 @@ func handleAIQuery(query string) error {
 			if err != nil {
 				return err
 			}
-			
+
 			if provider != "none" && provider != "configure" {
 				config.DefaultAICLI = provider
 				if err := SaveConfig(config); err != nil {
@@ -192,7 +192,7 @@ func printInteractiveHelp() {
 // handleReadCommand handles the /read command
 func handleReadCommand(args []string) error {
 	opts := ReadOptions{
-		Limit: 10, // Default
+		Limit: 20, // Default
 	}
 
 	// Parse arguments
@@ -227,13 +227,27 @@ func handleReadCommand(args []string) error {
 		return err
 	}
 
-	fmt.Println("Reading emails...")
+	fmt.Println("Reading emails and drafts...")
 	emails, err := client.ReadEmails(opts)
 	if err != nil {
 		return fmt.Errorf("failed to read emails: %v", err)
 	}
 
-	fmt.Print(FormatEmailList(emails))
+	// Fetch drafts with the same options
+	draftsOpts := opts
+	draftsOpts.Limit = 10 // Fetch fewer drafts to balance with emails
+	drafts, err := client.ReadDrafts(draftsOpts)
+	if err != nil {
+		fmt.Printf("Note: Could not read drafts: %v\n", err)
+		// Continue without drafts
+	}
+
+	// Combine emails and drafts into a single list
+	allItems := make([]*Email, 0, len(emails)+len(drafts))
+	allItems = append(allItems, emails...)
+	allItems = append(allItems, drafts...)
+
+	fmt.Print(FormatEmailListWithDrafts(allItems, len(emails)))
 	return nil
 }
 
@@ -242,7 +256,7 @@ func handleSendCommand(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("\n━━━ Compose Email ━━━")
-	
+
 	// Get recipient
 	fmt.Print("To: ")
 	to, _ := reader.ReadString('\n')
@@ -322,17 +336,17 @@ func handleReportCommand(args []string) error {
 	}
 
 	fmt.Printf("Generating report for: %s\n", selectedRange.Name)
-	
+
 	opts := ReadOptions{
 		Since: selectedRange.Since,
 		Limit: 1000,
 	}
-	
+
 	emails, err := client.ReadEmails(opts)
 	if err != nil {
 		return fmt.Errorf("failed to read emails: %v", err)
 	}
-	
+
 	// Filter emails within the time range
 	var filteredEmails []*Email
 	for _, email := range emails {
@@ -340,7 +354,7 @@ func handleReportCommand(args []string) error {
 			filteredEmails = append(filteredEmails, email)
 		}
 	}
-	
+
 	report := GenerateEmailReport(filteredEmails, *selectedRange)
 	fmt.Println(report)
 	return nil
@@ -349,23 +363,23 @@ func handleReportCommand(args []string) error {
 // handleDeleteCommand handles the /delete command
 func handleDeleteCommand(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
-	
+
 	fmt.Println("\n━━━ Delete Emails ━━━")
 	fmt.Println("Enter email IDs to delete (comma-separated) or")
 	fmt.Print("enter sender email to delete all from sender: ")
-	
+
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
-	
+
 	if input == "" {
 		return fmt.Errorf("no input provided")
 	}
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
-	
+
 	// Check if it's email IDs or sender email
 	if strings.Contains(input, "@") {
 		// Delete by sender
@@ -373,17 +387,17 @@ func handleDeleteCommand(args []string) error {
 			FromAddress: input,
 			Limit:       100,
 		}
-		
+
 		emails, err := client.ReadEmails(opts)
 		if err != nil {
 			return fmt.Errorf("failed to find emails: %v", err)
 		}
-		
+
 		if len(emails) == 0 {
 			fmt.Println("No emails found from that sender.")
 			return nil
 		}
-		
+
 		fmt.Printf("Found %d emails from %s\n", len(emails), input)
 		fmt.Print("Delete all? (y/n): ")
 		confirm, _ := reader.ReadString('\n')
@@ -391,17 +405,17 @@ func handleDeleteCommand(args []string) error {
 			fmt.Println("Deletion cancelled.")
 			return nil
 		}
-		
+
 		// Extract IDs
 		var emailIds []uint32
 		for _, email := range emails {
 			emailIds = append(emailIds, email.ID)
 		}
-		
+
 		if err := client.DeleteEmails(emailIds); err != nil {
 			return fmt.Errorf("failed to delete emails: %v", err)
 		}
-		
+
 		fmt.Printf("✓ Deleted %d email(s)\n", len(emails))
 	} else {
 		// Delete by IDs
@@ -409,59 +423,59 @@ func handleDeleteCommand(args []string) error {
 		if len(ids) == 0 {
 			return fmt.Errorf("invalid email IDs")
 		}
-		
+
 		fmt.Printf("Delete %d email(s)? (y/n): ", len(ids))
 		confirm, _ := reader.ReadString('\n')
 		if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
 			fmt.Println("Deletion cancelled.")
 			return nil
 		}
-		
+
 		if err := client.DeleteEmails(ids); err != nil {
 			return fmt.Errorf("failed to delete emails: %v", err)
 		}
-		
+
 		fmt.Printf("✓ Deleted %d email(s)\n", len(ids))
 	}
-	
+
 	return nil
 }
 
 // handleUnsubscribeCommand handles the /unsubscribe command
 func handleUnsubscribeCommand(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
-	
+
 	fmt.Println("\n━━━ Find Unsubscribe Links ━━━")
 	fmt.Print("Enter sender email (or press Enter for all): ")
-	
+
 	from, _ := reader.ReadString('\n')
 	from = strings.TrimSpace(from)
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
-	
+
 	opts := ReadOptions{
 		Limit: 20,
 	}
 	if from != "" {
 		opts.FromAddress = from
 	}
-	
+
 	fmt.Println("Searching for unsubscribe links...")
 	links, err := client.FindUnsubscribeLinks(opts)
 	if err != nil {
 		return fmt.Errorf("failed to find unsubscribe links: %v", err)
 	}
-	
+
 	if len(links) == 0 {
 		fmt.Println("No unsubscribe links found.")
 		return nil
 	}
-	
+
 	fmt.Print(GetUnsubscribeReport(links))
-	
+
 	if len(links) > 0 && len(links[0].Links) > 0 {
 		fmt.Printf("\nOpen first link in browser? (y/n): ")
 		confirm, _ := reader.ReadString('\n')
@@ -470,38 +484,38 @@ func handleUnsubscribeCommand(args []string) error {
 			fmt.Printf("Opening: %s\n", links[0].Links[0])
 		}
 	}
-	
+
 	return nil
 }
 
 // handleMarkReadCommand handles the /mark-read command
 func handleMarkReadCommand(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
-	
+
 	fmt.Println("\n━━━ Mark Emails as Read ━━━")
 	fmt.Print("Enter email IDs (comma-separated): ")
-	
+
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
-	
+
 	if input == "" {
 		return fmt.Errorf("no email IDs provided")
 	}
-	
+
 	ids := parseEmailIDs(input)
 	if len(ids) == 0 {
 		return fmt.Errorf("invalid email IDs")
 	}
-	
+
 	client, err := NewClient()
 	if err != nil {
 		return err
 	}
-	
+
 	if err := client.MarkEmailsAsRead(ids); err != nil {
 		return fmt.Errorf("failed to mark emails as read: %v", err)
 	}
-	
+
 	fmt.Printf("✓ Marked %d email(s) as read\n", len(ids))
 	return nil
 }
@@ -514,20 +528,181 @@ func showInfo() error {
 	}
 
 	config := client.GetConfig()
-	fmt.Println("\n━━━ Email Configuration ━━━")
-	fmt.Printf("Provider: %s\n", client.GetProviderInfo())
-	fmt.Printf("Email: %s\n", config.Email)
+	
+	// Email Configuration Section
+	fmt.Println("Email Configuration (Global ~/.email/)")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Location: ~/.email/config.json\n")
+	fmt.Printf("  Provider: %s\n", client.GetProviderInfo())
+	fmt.Printf("  Email: %s\n", config.Email)
+	if config.DefaultAICLI != "" && config.DefaultAICLI != "none" {
+		fmt.Printf("  AI CLI: %s\n", GetAICLIName(config.DefaultAICLI))
+	} else {
+		fmt.Printf("  AI CLI: Not configured (use /provider)\n")
+	}
 	if smtpHost, smtpPort, _, _, err := config.GetSMTPSettings(); err == nil {
-		fmt.Printf("SMTP: %s:%d\n", smtpHost, smtpPort)
+		fmt.Printf("  SMTP: %s:%d\n", smtpHost, smtpPort)
 	}
 	if imapHost, imapPort, err := config.GetIMAPSettings(); err == nil {
-		fmt.Printf("IMAP: %s:%d\n", imapHost, imapPort)
+		fmt.Printf("  IMAP: %s:%d\n", imapHost, imapPort)
 	}
 	if config.FromName != "" {
-		fmt.Printf("Display Name: %s\n", config.FromName)
+		fmt.Printf("  Display Name: %s\n", config.FromName)
 	}
+
+	fmt.Println("\nTip: Use 'mailos configure --local' to create a local config for this project")
+
+	// Common Commands Section
+	fmt.Println("\nCommon Commands")
+	fmt.Println("━━━━━━━━━━━━━━━")
+	fmt.Printf("  mailos                   Start interactive mode\n")
+	fmt.Printf("  mailos read              Browse and read emails\n")
+	fmt.Printf("  mailos send              Compose and send email\n")
+	fmt.Printf("  mailos report            Generate email analytics\n")
+	fmt.Printf("  mailos configure         Setup email configuration\n")
+	fmt.Printf("  mailos configure --local Configure for current project\n")
+	fmt.Printf("  mailos provider          Set AI provider (Claude, GPT, etc.)\n")
+	fmt.Printf("  mailos help              Show detailed help\n")
+
+	// Interactive Commands Section
+	fmt.Println("\nInteractive Mode Commands")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  /read                    Browse emails interactively\n")
+	fmt.Printf("  /send                    Compose new email\n")
+	fmt.Printf("  /inbox                   Open inbox in browser\n")
+	fmt.Printf("  /drafts                  Open drafts in browser\n")
+	fmt.Printf("  /template                Manage email templates\n")
+	fmt.Printf("  /unsubscribe             Find unsubscribe links\n")
+	fmt.Printf("  /delete                  Delete emails by criteria\n")
+	fmt.Printf("  /info                    Show this information\n")
+	fmt.Printf("  /help                    Detailed help and shortcuts\n")
+
+	// AI Navigation Section
+	fmt.Println("\nAI Assistant Features")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Natural Language         Ask questions in plain English\n")
+	fmt.Printf("  Email Summaries          'Summarize my emails from today'\n")
+	fmt.Printf("  Draft Assistance         'Help me write a follow-up email'\n")
+	fmt.Printf("  Email Analysis           'Find all emails about project X'\n")
+	fmt.Printf("  File Integration         Use @ to reference files in queries\n")
+
+	// Documentation and Resources
+	fmt.Println("\nDocumentation & Resources")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Configuration Guide      mailos help configure\n")
+	fmt.Printf("  AI Provider Setup        mailos help provider\n")
+	fmt.Printf("  Command Reference        mailos help commands\n")
+	fmt.Printf("  Troubleshooting          mailos help troubleshoot\n")
+	fmt.Printf("  GitHub Repository        https://github.com/corp-os/emailos\n")
+
+	// Environment Information
+	fmt.Println("\nEnvironment")
+	fmt.Println("━━━━━━━━━━━")
+	fmt.Printf("  Current Directory        %s\n", getCurrentDirectory())
+	if isGitRepo() {
+		fmt.Printf("  Git Repository           Yes\n")
+	}
+	
+	return nil
+}
+
+// Helper function to get current directory
+func getCurrentDirectory() string {
+	if dir, err := os.Getwd(); err == nil {
+		return dir
+	}
+	return "Unknown"
+}
+
+// Helper function to check if current directory is a git repo
+func isGitRepo() bool {
+	if _, err := os.Stat(".git"); err == nil {
+		return true
+	}
+	return false
+}
+
+// ShowEnhancedInfo displays comprehensive configuration and help information
+func ShowEnhancedInfo() error {
+	client, err := NewClient()
+	if err != nil {
+		return err
+	}
+
+	config := client.GetConfig()
+	
+	// Email Configuration Section
+	fmt.Println("Email Configuration (Global ~/.email/)")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Location: ~/.email/config.json\n")
+	fmt.Printf("  Provider: %s\n", client.GetProviderInfo())
+	fmt.Printf("  Email: %s\n", config.Email)
 	if config.DefaultAICLI != "" && config.DefaultAICLI != "none" {
-		fmt.Printf("AI Provider: %s\n", GetAICLIName(config.DefaultAICLI))
+		fmt.Printf("  AI CLI: %s\n", GetAICLIName(config.DefaultAICLI))
+	} else {
+		fmt.Printf("  AI CLI: Not configured (use /provider)\n")
+	}
+	if smtpHost, smtpPort, _, _, err := config.GetSMTPSettings(); err == nil {
+		fmt.Printf("  SMTP: %s:%d\n", smtpHost, smtpPort)
+	}
+	if imapHost, imapPort, err := config.GetIMAPSettings(); err == nil {
+		fmt.Printf("  IMAP: %s:%d\n", imapHost, imapPort)
+	}
+	if config.FromName != "" {
+		fmt.Printf("  Display Name: %s\n", config.FromName)
+	}
+
+	fmt.Println("\nTip: Use 'mailos configure --local' to create a local config for this project")
+
+	// Common Commands Section
+	fmt.Println("\nCommon Commands")
+	fmt.Println("━━━━━━━━━━━━━━━")
+	fmt.Printf("  mailos                   Start interactive mode\n")
+	fmt.Printf("  mailos read              Browse and read emails\n")
+	fmt.Printf("  mailos send              Compose and send email\n")
+	fmt.Printf("  mailos report            Generate email analytics\n")
+	fmt.Printf("  mailos configure         Setup email configuration\n")
+	fmt.Printf("  mailos configure --local Configure for current project\n")
+	fmt.Printf("  mailos provider          Set AI provider (Claude, GPT, etc.)\n")
+	fmt.Printf("  mailos help              Show detailed help\n")
+
+	// Interactive Commands Section
+	fmt.Println("\nInteractive Mode Commands")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  /read                    Browse emails interactively\n")
+	fmt.Printf("  /send                    Compose new email\n")
+	fmt.Printf("  /inbox                   Open inbox in browser\n")
+	fmt.Printf("  /drafts                  Open drafts in browser\n")
+	fmt.Printf("  /template                Manage email templates\n")
+	fmt.Printf("  /unsubscribe             Find unsubscribe links\n")
+	fmt.Printf("  /delete                  Delete emails by criteria\n")
+	fmt.Printf("  /info                    Show this information\n")
+	fmt.Printf("  /help                    Detailed help and shortcuts\n")
+
+	// AI Navigation Section
+	fmt.Println("\nAI Assistant Features")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Natural Language         Ask questions in plain English\n")
+	fmt.Printf("  Email Summaries          'Summarize my emails from today'\n")
+	fmt.Printf("  Draft Assistance         'Help me write a follow-up email'\n")
+	fmt.Printf("  Email Analysis           'Find all emails about project X'\n")
+	fmt.Printf("  File Integration         Use @ to reference files in queries\n")
+
+	// Documentation and Resources
+	fmt.Println("\nDocumentation & Resources")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Configuration Guide      mailos help configure\n")
+	fmt.Printf("  AI Provider Setup        mailos help provider\n")
+	fmt.Printf("  Command Reference        mailos help commands\n")
+	fmt.Printf("  Troubleshooting          mailos help troubleshoot\n")
+	fmt.Printf("  GitHub Repository        https://github.com/corp-os/emailos\n")
+
+	// Environment Information
+	fmt.Println("\nEnvironment")
+	fmt.Println("━━━━━━━━━━━")
+	fmt.Printf("  Current Directory        %s\n", getCurrentDirectory())
+	if isGitRepo() {
+		fmt.Printf("  Git Repository           Yes\n")
 	}
 	
 	return nil

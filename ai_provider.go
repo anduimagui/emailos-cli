@@ -12,7 +12,7 @@ var aiProviderCommands = map[string]string{
 	"claude-code":        "claude",
 	"claude-code-accept": "claude",
 	"claude-code-yolo":   "claude",
-	"openai-codex":       "openai",
+	"openai-codex":       "codex",
 	"gemini-cli":         "gemini",
 	"opencode":           "opencode",
 }
@@ -25,6 +25,79 @@ func GetAIProviderCommand(provider string) (string, bool) {
 
 // InvokeAIProvider invokes the configured AI provider with the given query
 func InvokeAIProvider(query string) error {
+	return InvokeAIProviderWithMode(query, "")
+}
+
+// InvokeAIProviderNonInteractive invokes the AI provider in non-interactive mode (returns text response)
+func InvokeAIProviderNonInteractive(query string) (string, error) {
+	return InvokeAIProviderNonInteractiveWithSystemPrompt(query, "")
+}
+
+// InvokeAIProviderNonInteractiveWithSystemPrompt invokes the AI provider with a custom system prompt
+func InvokeAIProviderNonInteractiveWithSystemPrompt(query string, customSystemPrompt string) (string, error) {
+	// Load configuration
+	config, err := LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to load configuration: %v", err)
+	}
+
+	// Check if AI provider is configured
+	if config.DefaultAICLI == "" || config.DefaultAICLI == "none" {
+		return "", fmt.Errorf("no AI CLI provider configured. Run 'mailos setup' or 'mailos configure' to select an AI provider")
+	}
+
+	// Get the command for the AI provider
+	aiCommand, exists := GetAIProviderCommand(config.DefaultAICLI)
+	if !exists {
+		return "", fmt.Errorf("unknown AI provider: %s", config.DefaultAICLI)
+	}
+
+	// Check if the AI command exists in PATH
+	_, err = exec.LookPath(aiCommand)
+	if err != nil {
+		return "", fmt.Errorf("AI CLI '%s' not found. Please install %s CLI first", aiCommand, GetAICLIName(config.DefaultAICLI))
+	}
+
+	// Use custom system prompt if provided, otherwise build default
+	var fullQuery string
+	if customSystemPrompt != "" {
+		fullQuery = fmt.Sprintf("%s\n\n%s", customSystemPrompt, query)
+	} else {
+		systemMessage := BuildEmailManagerSystemMessage()
+		fullQuery = fmt.Sprintf("%s\n\nUser Query: %s", systemMessage, query)
+	}
+
+	// Build command for non-interactive mode
+	var cmd *exec.Cmd
+	switch config.DefaultAICLI {
+	case "claude-code", "claude-code-accept", "claude-code-yolo":
+		// Claude uses --print flag for non-interactive output
+		cmd = exec.Command(aiCommand, "--print", fullQuery)
+	case "openai-codex":
+		// OpenAI Codex command
+		cmd = exec.Command(aiCommand, "exec", "--skip-git-repo-check", fullQuery)
+	case "gemini-cli":
+		// Gemini CLI command
+		cmd = exec.Command(aiCommand, "-p", fullQuery)
+	case "opencode":
+		// OpenCode command (assuming it supports similar syntax)
+		cmd = exec.Command(aiCommand, "--print", fullQuery)
+	default:
+		// Fallback
+		cmd = exec.Command(aiCommand, "--print", fullQuery)
+	}
+
+	// Capture output
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to execute AI provider: %v", err)
+	}
+
+	return string(output), nil
+}
+
+// InvokeAIProviderWithMode invokes the AI provider with a specific mode override
+func InvokeAIProviderWithMode(query string, modeOverride string) error {
 	// Load configuration
 	config, err := LoadConfig()
 	if err != nil {
@@ -48,291 +121,59 @@ func InvokeAIProvider(query string) error {
 	}
 
 	// Build the system message with documentation
-	systemMessage := buildAISystemMessage()
-	
+	systemMessage := BuildEmailManagerSystemMessage()
+
 	// Combine system message with user query
 	fullQuery := fmt.Sprintf("%s\n\nUser Query: %s", systemMessage, query)
 
+	// Determine the effective mode (use override if provided)
+	effectiveMode := config.DefaultAICLI
+	if modeOverride != "" {
+		effectiveMode = modeOverride
+	}
+
 	// Build command based on provider type
 	var cmd *exec.Cmd
-	switch config.DefaultAICLI {
+	switch effectiveMode {
+	case "claude-code":
+		// Regular Claude command with --print for non-interactive
+		cmd = exec.Command(aiCommand, "--print", fullQuery)
 	case "claude-code-yolo":
 		// YOLO mode with dangerous permissions flag
-		cmd = exec.Command(aiCommand, "--dangerously-skip-permissions", fullQuery)
+		cmd = exec.Command(aiCommand, "--dangerously-skip-permissions", "--print", fullQuery)
 	case "claude-code-accept":
 		// Accept edits mode - automatically accepts file edits
-		cmd = exec.Command(aiCommand, "--accept-edits", fullQuery)
+		cmd = exec.Command(aiCommand, "--permission-mode", "acceptEdits", "--print", fullQuery)
+	case "openai-codex":
+		// OpenAI Codex command
+		cmd = exec.Command(aiCommand, "exec", "--skip-git-repo-check", fullQuery)
+	case "gemini-cli":
+		// Gemini CLI command
+		cmd = exec.Command(aiCommand, "-p", fullQuery)
+	case "opencode":
+		// OpenCode command
+		cmd = exec.Command(aiCommand, fullQuery)
 	default:
-		// Regular interactive mode
+		// Fallback to regular interactive mode
 		cmd = exec.Command(aiCommand, fullQuery)
 	}
-	
+
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	fmt.Printf("Invoking %s for email management...\n\n", GetAICLIName(config.DefaultAICLI))
-	
+	// Use the effective mode for display
+	displayMode := config.DefaultAICLI
+	if modeOverride != "" {
+		displayMode = modeOverride
+	}
+	fmt.Printf("Invoking %s for email management...\n\n", GetAICLIName(displayMode))
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to execute AI provider: %v", err)
 	}
 
 	return nil
-}
-
-// buildAISystemMessage builds the system message with email documentation
-func buildAISystemMessage() string {
-	// First try to read from EMAILOS.md file if it exists
-	var readme string
-	if content, err := os.ReadFile("EMAILOS.md"); err == nil {
-		// Use the content from EMAILOS.md file
-		readme = string(content)
-	} else {
-		// Fall back to generating instructions dynamically
-		if instructions, err := GenerateAIInstructions(); err == nil {
-			readme = instructions
-		} else {
-			// Last resort: use basic hardcoded documentation
-			readme = getEmailOSDocumentation()
-		}
-	}
-	
-	// If readme already contains the system message header, return as is
-	if strings.Contains(readme, "You are an email manager") {
-		return readme
-	}
-	
-	// Otherwise, build the full system message
-	systemMessage := `You are an email manager with permission to read, send, and perform various functions on the user's behalf using the mailos CLI.
-
-IMPORTANT: You have full access to the mailos command-line tool to manage emails. Use the commands documented below to fulfill the user's request.
-
-Current Email Configuration:
-`
-	
-	// Add current configuration info
-	if config, err := LoadConfig(); err == nil {
-		systemMessage += fmt.Sprintf("- Active Account: %s\n", config.Email)
-		systemMessage += fmt.Sprintf("- Provider: %s\n", GetProviderName(config.Provider))
-		if config.FromName != "" {
-			systemMessage += fmt.Sprintf("- Display Name: %s\n", config.FromName)
-		}
-		if config.FromEmail != "" && config.FromEmail != config.Email {
-			systemMessage += fmt.Sprintf("- Sending As: %s\n", config.FromEmail)
-		}
-		
-		// List all available accounts
-		accounts := GetAllAccounts(config)
-		if len(accounts) > 1 {
-			systemMessage += "\nAvailable Accounts:\n"
-			for _, acc := range accounts {
-				label := ""
-				if acc.Label != "" {
-					label = fmt.Sprintf(" (%s)", acc.Label)
-				}
-				if acc.Email == config.Email {
-					systemMessage += fmt.Sprintf("- %s%s [ACTIVE]\n", acc.Email, label)
-				} else {
-					systemMessage += fmt.Sprintf("- %s%s\n", acc.Email, label)
-				}
-			}
-		}
-	}
-	
-	systemMessage += fmt.Sprintf("\n%s", readme)
-	
-	return systemMessage
-}
-
-// getEmailOSDocumentation returns the EmailOS documentation
-func getEmailOSDocumentation() string {
-	return `# EmailOS Command Reference
-
-## Available Commands
-
-### Send and Draft Emails
-
-Both ` + "`send`" + ` and ` + "`draft`" + ` commands share the same parameters for email composition:
-
-**Core Parameters (work with both commands):**
-- ` + "`-t, --to`" + `: Recipient email addresses (can be used multiple times)
-- ` + "`-s, --subject`" + `: Email subject
-- ` + "`-b, --body`" + `: Email body (supports Markdown)
-- ` + "`-c, --cc`" + `: CC recipients (can be used multiple times)
-- ` + "`-B, --bcc`" + `: BCC recipients (can be used multiple times)
-- ` + "`-f, --file`" + `: Read body from file
-- ` + "`-a, --attach`" + `: Attach files (can be used multiple times)
-- ` + "`-P, --plain`" + `: Send as plain text (no HTML conversion)
-- ` + "`-S, --no-signature`" + `: Don't include signature
-
-#### Send Email (sends immediately)
-` + "```bash" + `
-mailos send -t <recipient> -s <subject> -b <body> [-c <cc>] [-B <bcc>] [-f <file>] [-a <attachment>]
-mailos send --drafts                      # Send all draft emails
-
-# Examples:
-mailos send -t user@example.com -s "Hello" -b "This is a test email"
-mailos send -t alice@example.com -t bob@example.com -s "Team Update" -b "Meeting at 3pm"
-mailos send -t recipient@example.com -s "Report" -f report.md -a data.xlsx
-mailos send --drafts                      # Send all drafts
-` + "```" + `
-
-#### Draft Email (saves to drafts folder)
-` + "```bash" + `
-mailos draft [-t <recipient>] [-s <subject>] [-b <body>] [-c <cc>] [-B <bcc>] [-f <file>] [-a <attachment>]
-mailos draft --list                      # List drafts from IMAP
-mailos draft --read                      # Read draft content from IMAP
-
-# Examples:
-mailos draft                              # Create draft interactively
-mailos draft -t user@example.com -s "Meeting" -b "Let's meet at 3pm"  # Same as send, but saves as draft
-mailos draft -t team@example.com -s "Report" -f report.md -a data.xlsx  # Draft with attachment
-mailos draft --interactive               # Create multiple drafts
-
-# The draft command saves emails to:
-# 1. Local .email/draft-emails/ folder (as markdown files)
-# 2. Your email account's IMAP Drafts folder
-` + "```" + `
-
-**Key Difference:** 
-- ` + "`send`" + ` immediately sends the email to recipients
-- ` + "`draft`" + ` saves the email to drafts folder for later sending (use ` + "`mailos send --drafts`" + ` to send all drafts)
-
-### Read Emails
-` + "```bash" + `
-mailos read [--unread] [--from <sender>] [--days <n>] [-n <limit>]
-
-# Examples:
-mailos read                          # Read last 10 emails
-mailos read --unread                 # Read only unread emails
-mailos read --from sender@example.com # Read from specific sender
-mailos read --days 7                 # Read emails from last 7 days
-mailos read -n 20                    # Read last 20 emails
-` + "```" + `
-
-### Mark Emails as Read
-` + "```bash" + `
-mailos mark-read --ids <comma-separated-ids>
-
-# Example:
-mailos mark-read --ids 1,2,3
-` + "```" + `
-
-### Delete Emails
-` + "```bash" + `
-mailos delete --ids <ids> --confirm
-mailos delete --from <sender> --confirm
-mailos delete --subject <subject> --confirm
-
-# Examples:
-mailos delete --ids 1,2,3 --confirm
-mailos delete --from spam@example.com --confirm
-` + "```" + `
-
-### Find Unsubscribe Links
-` + "```bash" + `
-mailos unsubscribe [--from <sender>] [--open]
-
-# Examples:
-mailos unsubscribe --from newsletter@example.com
-mailos unsubscribe --from newsletter@example.com --open  # Opens link in browser
-` + "```" + `
-
-### Show Configuration
-` + "```bash" + `
-mailos info  # Display current email configuration
-` + "```" + `
-
-### Setup/Reconfigure
-` + "```bash" + `
-mailos setup      # Run interactive configuration wizard
-mailos configure  # Manage existing configuration (interactive menu)
-
-# Direct configuration updates (non-interactive):
-mailos configure --name "New Display Name"     # Update display name
-mailos configure --from "newemail@example.com" # Update from email
-mailos configure --ai "claude-code"            # Update AI provider
-mailos configure --local                       # Create/modify local config
-
-# Examples:
-mailos configure --name "John Doe"             # Change display name to John Doe
-mailos configure --local --name "Project Bot"  # Set local display name
-` + "```" + `
-
-### Important Notes for Configuration Changes:
-- When the user asks to change their name, use: ` + "`mailos configure --name \"Their Name\"`" + `
-- When the user asks to change display name locally, use: ` + "`mailos configure --local --name \"Their Name\"`" + `
-- The configure command accepts flags: --name, --from, --email, --provider, --ai
-- Use --local flag to modify project-specific configuration (.email/)
-- Without --local flag, it modifies global configuration (~/.email/)
-
-## Email Body Formatting
-
-All email bodies support Markdown formatting:
-- **Bold**: ` + "`**text**`" + `
-- *Italic*: ` + "`*text*`" + `
-- Headers: ` + "`# H1`, `## H2`, `### H3`" + `
-- Links: ` + "`[text](https://example.com)`" + `
-- Code blocks: ` + "` ```code``` `" + `
-- Lists: ` + "`- item` or `* item`" + `
-
-## Command Options Reference
-
-### Send Command Options:
-- ` + "`-t, --to`" + `: Recipient email addresses (can be used multiple times)
-- ` + "`-s, --subject`" + `: Email subject
-- ` + "`-b, --body`" + `: Email body (supports Markdown)
-- ` + "`-c, --cc`" + `: CC recipients (can be used multiple times)
-- ` + "`-B, --bcc`" + `: BCC recipients (can be used multiple times)
-- ` + "`-f, --file`" + `: Read body from file
-- ` + "`-a, --attach`" + `: Attach files (can be used multiple times)
-- ` + "`-P, --plain`" + `: Send as plain text (no HTML conversion)
-- ` + "`-S, --no-signature`" + `: Don't include signature
-
-### Read Command Options:
-- ` + "`-n, --number`" + `: Number of emails to read (default: 10)
-- ` + "`-u, --unread`" + `: Show only unread emails
-- ` + "`--from`" + `: Filter by sender email address
-- ` + "`--subject`" + `: Filter by subject (partial match)
-- ` + "`--days`" + `: Show emails from last N days
-- ` + "`--json`" + `: Output as JSON
-- ` + "`--save-markdown`" + `: Save emails as markdown files
-- ` + "`--output-dir`" + `: Directory to save markdown files
-
-## Usage Notes
-
-1. The mailos command is available globally after installation
-2. Email configuration is stored locally in ~/.email/config.json
-3. All commands return appropriate exit codes for error handling
-4. Use -f flag to send email content from a file
-5. Multiple recipients can be specified with multiple -t flags
-6. The read command returns emails in chronological order
-7. Email IDs are provided in the read output for use with mark-read and delete commands
-
-## Examples of Common Tasks
-
-### Send a quick email:
-` + "```bash" + `
-mailos send -t boss@company.com -s "Project Update" -b "The project is on track for Friday delivery."
-` + "```" + `
-
-### Read and manage unread emails:
-` + "```bash" + `
-mailos read --unread
-mailos mark-read --ids 1,2,3
-` + "```" + `
-
-### Clean up emails from a specific sender:
-` + "```bash" + `
-mailos read --from newsletter@spam.com
-mailos delete --from newsletter@spam.com --confirm
-` + "```" + `
-
-### Send an email with attachment:
-` + "```bash" + `
-mailos send -t client@example.com -s "Report Attached" -b "Please find the report attached." -a report.pdf
-` + "```" + `
-`
 }
 
 // CheckAIProviderAvailable checks if an AI provider is configured and available
@@ -341,20 +182,20 @@ func CheckAIProviderAvailable() (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	
+
 	if config.DefaultAICLI == "" || config.DefaultAICLI == "none" {
 		return false, ""
 	}
-	
+
 	aiCommand, exists := GetAIProviderCommand(config.DefaultAICLI)
 	if !exists {
 		return false, ""
 	}
-	
+
 	if _, err := exec.LookPath(aiCommand); err != nil {
 		return false, ""
 	}
-	
+
 	return true, config.DefaultAICLI
 }
 
@@ -363,7 +204,7 @@ func IsGeneralQuery(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	
+
 	// Check if first argument is a known command
 	knownCommands := []string{
 		"setup", "configure", "config", "template", "send", "read",
@@ -371,14 +212,19 @@ func IsGeneralQuery(args []string) bool {
 		"report", "open", "provider",
 		"--help", "-h", "--version", "-v",
 	}
-	
+
 	firstArg := strings.ToLower(args[0])
 	for _, cmd := range knownCommands {
 		if firstArg == cmd {
 			return false
 		}
 	}
-	
+
 	// If not a known command, it's a general query
 	return true
+}
+
+// getEmailManagerPrompt returns the configured email manager prompt or a default
+func getEmailManagerPrompt() string {
+	return GetEmailManagerPrompt()
 }

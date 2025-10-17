@@ -1,0 +1,1 @@
+[] create prompts.md view with different prompts across the app and move from email_view.go to config file
