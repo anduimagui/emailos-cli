@@ -15,11 +15,11 @@
   ],
   "homepage": "https://email-os.com",
   "bugs": {
-    "url": "https://github.com/anduimagui/emailos/issues"
+    "url": "https://github.com/anduimagui/emailos-cli/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anduimagui/emailos.git"
+    "url": "git+https://github.com/anduimagui/emailos-cli.git"
   },
   "license": "Proprietary",
   "author": "EmailOS Team",

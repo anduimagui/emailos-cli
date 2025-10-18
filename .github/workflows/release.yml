@@ -103,7 +103,8 @@ jobs:
       - name: Publish to npm
         run: |
           cd npm
-          npm publish --access public
+          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
+          npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -116,10 +117,21 @@ jobs:
       - name: Download macOS binary for SHA
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          wget https://github.com/corp-os/emailos/releases/download/${VERSION}/mailos-darwin-amd64.tar.gz
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          # Wait for release assets to be available
+          for i in {1..10}; do
+            if wget -q https://github.com/anduimagui/emailos-cli/releases/download/${VERSION}/mailos-darwin-amd64.tar.gz; then
+              break
+            fi
+            echo "Waiting for release assets... attempt $i/10"
+            sleep 30
+          done
+          if [ ! -f mailos-darwin-amd64.tar.gz ]; then
+            echo "Failed to download release asset after 5 minutes"
+            exit 1
+          fi
           SHA256=$(sha256sum mailos-darwin-amd64.tar.gz | cut -d' ' -f1)
           echo "SHA256=${SHA256}" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       - name: Update Homebrew formula
         run: |
