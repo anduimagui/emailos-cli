@@ -1,6 +1,6 @@
 {
   "name": "mailos",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Command-line email client with AI integration and support for multiple providers",
   "keywords": [
     "email",
@@ -15,11 +15,11 @@
   ],
   "homepage": "https://email-os.com",
   "bugs": {
-    "url": "https://github.com/corp-os/emailos/issues"
+    "url": "https://github.com/anduimagui/emailos/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/corp-os/emailos.git"
+    "url": "git+https://github.com/anduimagui/emailos.git"
   },
   "license": "Proprietary",
   "author": "EmailOS Team",
