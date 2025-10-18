@@ -235,6 +235,14 @@ To manage multiple email accounts:
    mailos configure --local --email project2@example.com
    ```
 
+3. **Adding Aliases/Sub-emails**: Add additional email addresses from the same provider
+   ```bash
+   mailos accounts --set alias@example.com
+   # Use the same credentials as your main account from that provider
+   ```
+
+For detailed account and alias management, see `mailos help accounts`.
+
 ## Troubleshooting
 
 ### Authentication Failed

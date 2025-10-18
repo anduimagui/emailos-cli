@@ -90,13 +90,13 @@ func ReadFromFolder(opts ReadOptions, folder string) ([]*Email, error) {
 	
 	config, err := LoadConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %v", err)
+		return nil, fmt.Errorf("READ_CONFIG_ERROR: Failed to load email configuration for IMAP connection. Ensure you have run 'mailos setup' to configure your email account settings (email, password, provider). Original error: %v", err)
 	}
 
 	// Get IMAP settings from provider
 	imapHost, imapPort, err := config.GetIMAPSettings()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get IMAP settings: %v", err)
+		return nil, fmt.Errorf("READ_IMAP_SETTINGS_ERROR: Failed to get IMAP server settings for provider '%s'. Ensure your provider is correctly configured. Supported providers: Gmail, Outlook, Yahoo, Generic IMAP. Original error: %v", config.Provider, err)
 	}
 
 	// Connect to IMAP server
@@ -110,13 +110,13 @@ func ReadFromFolder(opts ReadOptions, folder string) ([]*Email, error) {
 		c, err = client.Dial(fmt.Sprintf("%s:%d", imapHost, imapPort))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to IMAP server: %v", err)
+		return nil, fmt.Errorf("READ_IMAP_CONNECTION_ERROR: Failed to connect to IMAP server %s:%d. This could be due to: (1) Network connectivity issues, (2) Incorrect server settings, (3) Firewall blocking connection, (4) Server temporarily unavailable. Original error: %v", imapHost, imapPort, err)
 	}
 	defer c.Logout()
 
 	// Login
 	if err := c.Login(config.Email, config.Password); err != nil {
-		return nil, fmt.Errorf("failed to login: %v", err)
+		return nil, fmt.Errorf("READ_IMAP_AUTH_ERROR: Failed to authenticate with IMAP server using email '%s'. This could be due to: (1) Incorrect password, (2) Account locked or suspended, (3) Two-factor authentication required, (4) App-specific password needed. Original error: %v", config.Email, err)
 	}
 
 	// Select the specified folder
@@ -774,7 +774,7 @@ func ReadEmailByID(emailID uint32) (*Email, error) {
 
 	// Login
 	if err := c.Login(config.Email, config.Password); err != nil {
-		return nil, fmt.Errorf("failed to login: %v", err)
+		return nil, fmt.Errorf("READ_IMAP_AUTH_ERROR: Failed to authenticate with IMAP server using email '%s'. This could be due to: (1) Incorrect password, (2) Account locked or suspended, (3) Two-factor authentication required, (4) App-specific password needed. Original error: %v", config.Email, err)
 	}
 
 	// Select inbox

@@ -8,7 +8,7 @@ Before publishing, ensure you have:
 
 1. **NPM Account**: Create an account at https://www.npmjs.com/
 2. **NPM Token**: Generate an access token from npm settings
-3. **GitHub Repository**: Set up the repository at https://github.com/corp-os/emailos
+3. **GitHub Repository**: Set up the repository at https://github.com/anduimagui/emailos
 4. **Homebrew Tap**: Create a tap repository (e.g., `homebrew-mailos`)
 
 ## Setup Secrets
@@ -109,7 +109,7 @@ npm install -g mailos
 
 ### Direct Download
 Users can download binaries directly from GitHub releases:
-https://github.com/corp-os/emailos/releases
+https://github.com/anduimagui/emailos/releases
 
 ## Version Management
 
@@ -132,7 +132,7 @@ https://github.com/corp-os/emailos/releases
 
 ### GitHub Actions Issues
 
-1. Check workflow runs at: https://github.com/corp-os/emailos/actions
+1. Check workflow runs at: https://github.com/anduimagui/emailos/actions
 2. Ensure all secrets are properly configured
 3. Verify tag format matches the workflow trigger
 

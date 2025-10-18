@@ -1,0 +1,11 @@
+name = "email-os-docs"
+compatibility_date = "2024-01-01"
+
+[env.production]
+name = "email-os-docs"
+
+[[env.production.routes]]
+pattern = "email-os.com/*"
+
+[build]
+command = "echo 'No build step required for static docs'"

@@ -112,17 +112,12 @@ func SearchCommand(args []string) error {
 		}
 	}
 
-	client, err := NewClient()
-	if err != nil {
-		return err
-	}
-
 	fmt.Println("Searching emails...")
 	
 	// First get emails using basic read options
-	emails, err := client.ReadEmails(advOpts.ReadOptions)
+	emails, err := Read(advOpts.ReadOptions)
 	if err != nil {
-		return fmt.Errorf("failed to search emails: %v", err)
+		return fmt.Errorf("SEARCH_READ_ERROR: Failed to retrieve emails from IMAP server or local storage. This could be due to: (1) IMAP connection issues, (2) Authentication problems, (3) Missing email configuration, (4) Local storage access errors. Original error: %v", err)
 	}
 
 	// Apply advanced filtering
@@ -130,12 +125,16 @@ func SearchCommand(args []string) error {
 	   advOpts.HasAttachments || advOpts.AttachmentSize > 0 || advOpts.DateRange != "" {
 		emails, err = AdvancedSearchEmails(emails, advOpts)
 		if err != nil {
-			return fmt.Errorf("failed to apply advanced search: %v", err)
+			return fmt.Errorf("SEARCH_FILTER_ERROR: Failed to apply advanced search filters (query: '%s', min_size: %d, max_size: %d, has_attachments: %v, date_range: '%s'). This indicates an issue with search criteria processing or email content analysis. Original error: %v", 
+				advOpts.Query, advOpts.MinSize, advOpts.MaxSize, advOpts.HasAttachments, advOpts.DateRange, err)
 		}
 	}
 
 	if len(emails) == 0 {
-		fmt.Println("No emails found matching search criteria.")
+		fmt.Printf("SEARCH_NO_RESULTS: No emails found matching search criteria. Applied filters: from='%s', to='%s', subject='%s', unread_only=%v, days_back=%v, limit=%d\n", 
+			advOpts.FromAddress, advOpts.ToAddress, advOpts.Subject, advOpts.UnreadOnly, 
+			func() interface{} { if advOpts.Since.IsZero() { return "none" } else { return advOpts.Since.Format("2006-01-02") } }(), 
+			advOpts.Limit)
 		return nil
 	}
 
@@ -148,9 +147,9 @@ func SearchCommand(args []string) error {
 	if saveToFile {
 		err = SaveEmailsAsMarkdown(emails, outputDir)
 		if err != nil {
-			fmt.Printf("\nWarning: Failed to save emails to files: %v\n", err)
+			fmt.Printf("\nSEARCH_SAVE_WARNING: Failed to save %d emails to markdown files in directory '%s'. This could be due to: (1) Permission issues, (2) Disk space, (3) Invalid directory path, (4) File system errors. Error: %v\n", len(emails), outputDir, err)
 		} else {
-			fmt.Printf("\nEmails saved to %s directory\n", outputDir)
+			fmt.Printf("\nSEARCH_SAVE_SUCCESS: %d emails saved to %s directory as markdown files\n", len(emails), outputDir)
 		}
 	}
 

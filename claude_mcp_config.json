@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "mailos": {
-      "command": "/Users/andrewmaguire/LOCAL/Github/_code-main/emailos/mailos",
-      "args": ["mcp", "start"],
-      "env": {}
-    }
-  }
-}

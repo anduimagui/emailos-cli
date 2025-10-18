@@ -19,7 +19,7 @@ npm view mailos
 ```
 If you get a 404 error, the name is available. If not, you'll need to:
 - Choose a different name in package.json
-- Or use a scoped package name like `@corp-os/mailos`
+- Or use a scoped package name like `@anduimagui/mailos`
 
 ### Step 3: Initial Manual Publish
 Navigate to the npm directory and publish:
@@ -48,7 +48,7 @@ rm -rf bin
 4. Copy the token
 
 ### Step 5: Add Token to GitHub Secrets
-1. Go to https://github.com/corp-os/emailos/settings/secrets/actions
+1. Go to https://github.com/anduimagui/emailos/settings/secrets/actions
 2. Click "New repository secret"
 3. Name: `NPM_TOKEN`
 4. Value: Paste your npm token
@@ -60,7 +60,7 @@ rm -rf bin
 **Solution**: Use a scoped package name
 ```json
 {
-  "name": "@corp-os/mailos",
+  "name": "@anduimagui/mailos",
   "version": "0.1.14",
   ...
 }
@@ -105,7 +105,7 @@ If "mailos" is taken, use a scoped package:
 1. Update npm/package.json:
 ```json
 {
-  "name": "@corp-os/mailos",
+  "name": "@anduimagui/mailos",
   ...
 }
 ```

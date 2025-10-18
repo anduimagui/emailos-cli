@@ -4,7 +4,7 @@
  * This package provides a Node.js wrapper for the mailos Go binary.
  * The actual functionality is implemented in Go and compiled to a native binary.
  * 
- * @see https://github.com/corp-os/emailos
+ * @see https://github.com/anduimagui/emailos
  */
 
 module.exports = {

@@ -119,4 +119,4 @@ MIT
 
 ## Support
 
-For issues and feature requests, visit: https://github.com/corp-os/emailos/issues
+For issues and feature requests, visit: https://github.com/anduimagui/emailos/issues

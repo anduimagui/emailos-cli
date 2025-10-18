@@ -19,7 +19,7 @@ Use this checklist when preparing a new release.
 - [ ] Test binary on your platform
 
 ### 2. GitHub Setup (First Time Only)
-- [ ] Create GitHub repository at https://github.com/corp-os/emailos
+- [ ] Create GitHub repository at https://github.com/anduimagui/emailos
 - [ ] Add NPM_TOKEN secret to GitHub repository
 - [ ] Create homebrew-mailos tap repository
 
@@ -34,7 +34,7 @@ Use this checklist when preparing a new release.
 - [ ] Push: `git push && git push --tags`
 
 ### 5. Monitor Release
-- [ ] Check GitHub Actions workflow at https://github.com/corp-os/emailos/actions
+- [ ] Check GitHub Actions workflow at https://github.com/anduimagui/emailos/actions
 - [ ] Verify GitHub release is created
 - [ ] Confirm binaries are attached to release
 

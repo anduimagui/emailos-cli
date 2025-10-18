@@ -2,7 +2,7 @@
 /emails
 
 # Binary executables
-mailos
+/mailos
 *.exe
 *.dll
 *.so

@@ -15,8 +15,7 @@ import (
 	"strings"
 	"time"
 
-	mailos "github.com/corp-os/emailos"
-	"github.com/njayp/ophis"
+	mailos "github.com/anduimagui/emailos"
 	"github.com/spf13/cobra"
 )
 
@@ -476,7 +475,7 @@ func getAllCommands() []string {
 		"draft", "drafts", "send", "sync", "sync-db", "sent", "download", "read", "reply",
 		"mark-read", "accounts", "info", "test", "delete", "report",
 		"open", "stats", "docs", "interactive", "chat", "search",
-		"unsubscribe", "mcp",
+		"unsubscribe",
 	}
 	sort.Strings(commands)
 	return commands
@@ -612,9 +611,8 @@ and provides a consistent interface for sending and reading emails.`,
 			return fmt.Errorf("CLI functionality temporarily disabled")
 		}
 		
-		// If no query provided, run configure with interactive account selector
-		// return // mailos.ConfigureWithOptions - disabled(// mailos.ConfigureOptions - disabled{})
-		return fmt.Errorf("configuration functionality temporarily disabled")
+		// Default behavior: show help
+		return cmd.Help()
 	},
 }
 
@@ -924,6 +922,7 @@ var sendCmd = &cobra.Command{
 		plain, _ := cmd.Flags().GetBool("plain")
 		noSignature, _ := cmd.Flags().GetBool("no-signature")
 		signature, _ := cmd.Flags().GetString("signature")
+		from, _ := cmd.Flags().GetString("from")
 
 		if len(to) == 0 {
 			return fmt.Errorf("at least one recipient is required")
@@ -1009,7 +1008,7 @@ var sendCmd = &cobra.Command{
 			}
 		}
 
-		if err := mailos.Send(msg); err != nil {
+		if err := mailos.SendWithAccount(msg, from); err != nil {
 			return fmt.Errorf("failed to send email: %v", err)
 		}
 
@@ -1372,7 +1371,7 @@ var searchCmd = &cobra.Command{
 		// if err != nil {
 		//	return err
 		// }
-		return fmt.Errorf("client functionality temporarily disabled")
+		// return fmt.Errorf("client functionality temporarily disabled")
 
 		opts := mailos.ReadOptions{
 			Limit:          limit,
@@ -1386,13 +1385,12 @@ var searchCmd = &cobra.Command{
 
 		// Handle time range parameter
 		if timeRange != "" {
-			// selectedRange, err := mailos.ParseTimeRangeString(timeRange)
-			// if err != nil {
-			//	return fmt.Errorf("invalid time range: %v", err)
-			// }
-			// opts.Since = selectedRange.Since
+			selectedRange, err := mailos.ParseTimeRangeString(timeRange)
+			if err != nil {
+				return fmt.Errorf("invalid time range: %v", err)
+			}
+			opts.Since = selectedRange.Since
 			// Also filter by Until time after fetching
-			return fmt.Errorf("time range functionality temporarily disabled")
 		} else if days > 0 {
 			opts.Since = time.Now().AddDate(0, 0, -days)
 		}
@@ -1404,18 +1402,18 @@ var searchCmd = &cobra.Command{
 		}
 
 		// Filter by Until time if time range was specified
-		// if timeRange != "" {
-		//	// selectedRange, _ := mailos.ParseTimeRangeString(timeRange)
-		//	var filteredEmails []*mailos.Email
-		//	for _, email := range emails {
-		//		// Check if email is within the time range (both Since and Until)
-		//		if email.Date.After(selectedRange.Since.Add(-time.Second)) && 
-		//		   email.Date.Before(selectedRange.Until.Add(time.Second)) {
-		//			filteredEmails = append(filteredEmails, email)
-		//		}
-		//	}
-		//	emails = filteredEmails
-		// }
+		if timeRange != "" {
+			selectedRange, _ := mailos.ParseTimeRangeString(timeRange)
+			var filteredEmails []*mailos.Email
+			for _, email := range emails {
+				// Check if email is within the time range (both Since and Until)
+				if email.Date.After(selectedRange.Since.Add(-time.Second)) && 
+				   email.Date.Before(selectedRange.Until.Add(time.Second)) {
+					filteredEmails = append(filteredEmails, email)
+				}
+			}
+			emails = filteredEmails
+		}
 
 		// Save as markdown if requested
 		if saveMarkdown && len(emails) > 0 {
@@ -1518,38 +1516,21 @@ var readCmd = &cobra.Command{
 		emailID := args[0]
 		id, err := strconv.ParseUint(emailID, 10, 32)
 		if err != nil {
-			return fmt.Errorf("invalid email ID: %s", emailID)
+			return fmt.Errorf("READ_INVALID_ID: Email ID '%s' is not a valid number. Email IDs must be positive integers (e.g., 1332, 1331). Use 'mailos search' to see available email IDs. Parsing error: %v", emailID, err)
 		}
 		
 		// client, err := NewClient()
 		// if err != nil {
 		//	return err
 		// }
-		return fmt.Errorf("client functionality temporarily disabled")
-		
-		// Read emails to find the one with matching ID
-		opts := mailos.ReadOptions{
-			Limit: 1000, // Search through more emails to find the specific ID
-			DownloadAttach: includeDocuments, // Download attachments if include-documents is true
-		}
+		// return fmt.Errorf("client functionality temporarily disabled")
 		
 		fmt.Printf("Reading email ID %d...\n", id)
-		emails, err := mailos.Read(opts)
+		
+		// Use ReadEmailByID for direct email retrieval
+		targetEmail, err := mailos.ReadEmailByID(uint32(id))
 		if err != nil {
-			return fmt.Errorf("failed to read emails: %v", err)
-		}
-		
-		// Find the email with matching ID
-		var targetEmail *mailos.Email
-		for _, email := range emails {
-			if email.ID == uint32(id) {
-				targetEmail = email
-				break
-			}
-		}
-		
-		if targetEmail == nil {
-			return fmt.Errorf("email with ID %d not found", id)
+			return fmt.Errorf("READ_EMAIL_ERROR: Failed to retrieve email with ID %d. This could be due to: (1) Email ID does not exist in your inbox, (2) IMAP server connection issues, (3) Authentication problems, (4) Email was deleted or moved. Try running 'mailos search' to see available email IDs. Original error: %v", id, err)
 		}
 		
 		// Display full email content
@@ -1733,11 +1714,36 @@ var accountsCmd = &cobra.Command{
 		
 		// Handle set account
 		if setAccount != "" {
-			// Validate account exists
+			// Try to load existing account
 			setup, err := mailos.InitializeMailSetup(setAccount)
 			if err != nil {
-				return err
+				// If account doesn't exist, offer to add it
+				if strings.Contains(err.Error(), "not found") {
+					fmt.Printf("Account '%s' not found.\n", setAccount)
+					fmt.Print("Would you like to add this account? (y/N): ")
+					
+					var response string
+					fmt.Scanln(&response)
+					
+					if strings.ToLower(strings.TrimSpace(response)) == "y" {
+						// Add the new account by running configuration
+						if err := mailos.AddNewAccount(setAccount); err != nil {
+							return fmt.Errorf("failed to add account: %v", err)
+						}
+						
+						// Try to initialize again after adding
+						setup, err = mailos.InitializeMailSetup(setAccount)
+						if err != nil {
+							return fmt.Errorf("failed to initialize newly added account: %v", err)
+						}
+					} else {
+						return fmt.Errorf("account setup cancelled")
+					}
+				} else {
+					return err
+				}
 			}
+			
 			fmt.Printf("✓ Set session default account to: %s\n", setAccount)
 			fmt.Printf("  Provider: %s\n", mailos.GetProviderName(setup.Config.Provider))
 			if setup.Config.FromEmail != "" && setup.Config.FromEmail != setup.Config.Email {
@@ -2296,7 +2302,7 @@ var statsCmd = &cobra.Command{
 		
 		// Parse additional arguments as query parameters
 		if err := query.ParseArgs(args); err != nil {
-			return fmt.Errorf("failed to parse query: %v", err)
+			return fmt.Errorf("STATS_QUERY_PARSE_ERROR: Failed to parse stats query arguments '%v'. Common issues: (1) Invalid date format, (2) Malformed time range, (3) Invalid account specification. Use format like 'today', 'last week', or '2024-01-01 to 2024-01-31'. Original error: %v", args, err)
 		}
 		
 		// Handle time range
@@ -2313,25 +2319,54 @@ var statsCmd = &cobra.Command{
 		// if err != nil {
 		//	return err
 		// }
-		return fmt.Errorf("client functionality temporarily disabled")
+		// return fmt.Errorf("client functionality temporarily disabled")
 		
 		fmt.Println("Fetching emails for analysis...")
 		
 		// Read emails using query options
 		emails, err := mailos.Read(query.ToReadOptions())
 		if err != nil {
-			return fmt.Errorf("failed to read emails: %v", err)
+			return fmt.Errorf("STATS_EMAIL_FETCH_ERROR: Failed to retrieve emails for statistical analysis. This could be due to: (1) IMAP server connection issues, (2) Authentication problems, (3) Missing email configuration, (4) Local storage access errors. Applied filters: from='%s', to='%s', subject='%s', days=%d, range='%s'. Original error: %v", 
+				query.FromAddress, query.ToAddress, query.Subject, query.Days, query.TimeRange, err)
 		}
 		
 		// Filter by Until time if needed
 		emails = query.FilterEmails(emails)
 		
-		// Generate statistics (temporarily disabled)
-		// stats := // mailos. - temporarily disabledGenerateEmailStats(emails, query)
+		// Get account email for stats
+		cfg, err := mailos.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("STATS_CONFIG_ERROR: Failed to load email configuration needed for statistics generation. Ensure you have run 'mailos setup' to configure your email account. Original error: %v", err)
+		}
 		
-		// Display formatted statistics (temporarily disabled)
-		// fmt.Print(// mailos. - temporarily disabledFormatEmailStats(stats))
-		fmt.Printf("Found %d emails\n", len(emails))
+		// Generate statistics
+		statsOpts := mailos.StatsOptions{
+			AccountEmail: cfg.Email,
+			Since:        query.Since,
+			Until:        query.Until,
+			TopN:         10,
+		}
+		
+		stats, err := mailos.GenerateEmailStats(statsOpts)
+		if err != nil {
+			return fmt.Errorf("STATS_GENERATION_ERROR: Failed to generate email statistics from %d emails for account '%s' (date range: %v to %v). This could be due to: (1) Email data processing errors, (2) Invalid date ranges, (3) Database access issues, (4) Email parsing problems. Original error: %v", 
+				len(emails), cfg.Email, 
+				func() interface{} { if query.Since.IsZero() { return "beginning" } else { return query.Since.Format("2006-01-02") } }(),
+				func() interface{} { if query.Until.IsZero() { return "now" } else { return query.Until.Format("2006-01-02") } }(), 
+				err)
+		}
+		
+		// Display basic statistics
+		fmt.Printf("📊 Email Statistics for %s\n", stats.AccountEmail)
+		fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+		fmt.Printf("Total Emails: %d\n", stats.TotalEmails)
+		if len(stats.SenderStats) > 0 {
+			fmt.Printf("\nTop Senders:\n")
+			for i, sender := range stats.SenderStats {
+				if i >= 5 { break }
+				fmt.Printf("  %d. %s (%d emails)\n", i+1, sender.Email, sender.Count)
+			}
+		}
 		
 		return nil
 	},
@@ -2552,6 +2587,7 @@ func init() {
 	sendCmd.Flags().BoolP("plain", "P", false, "Send as plain text")
 	sendCmd.Flags().BoolP("no-signature", "S", false, "No signature")
 	sendCmd.Flags().String("signature", "", "Custom signature")
+	sendCmd.Flags().String("from", "", "Send from specific email account (account nickname or email)")
 	
 	// Send --drafts specific flags
 	sendCmd.Flags().Bool("drafts", false, "Send all draft emails from .email/drafts folder")
@@ -2733,7 +2769,7 @@ func main() {
 	// Check for updates before running the main command
 	// Skip for certain commands that shouldn't trigger updates
 	if len(os.Args) > 1 {
-		skipUpdateCommands := []string{"--version", "-v", "--help", "-h", "mcp"}
+		skipUpdateCommands := []string{"--version", "-v", "--help", "-h"}
 		shouldSkip := false
 		for _, cmd := range skipUpdateCommands {
 			if os.Args[1] == cmd {
@@ -2749,9 +2785,6 @@ func main() {
 		checkForUpdates()
 	}
 	
-	// Add MCP server capability via Ophis
-	// This allows the CLI to be used as an MCP server when called with 'mcp' subcommand
-	rootCmd.AddCommand(ophis.Command(nil))
 	
 	// Disable unknown command errors to allow general queries
 	rootCmd.SilenceErrors = true

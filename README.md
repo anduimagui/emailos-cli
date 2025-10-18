@@ -1,7 +1,7 @@
 # MailOS - AI-Powered Command Line Email Client
 
 [![npm version](https://img.shields.io/npm/v/mailos.svg)](https://www.npmjs.com/package/mailos)
-[![GitHub release](https://img.shields.io/github/release/corp-os/emailos.svg)](https://github.com/corp-os/emailos/releases)
+[![GitHub release](https://img.shields.io/github/release/anduimagui/emailos.svg)](https://github.com/anduimagui/emailos/releases)
 [![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](https://email-os.com)
 
 MailOS is a powerful command-line email client that brings AI automation to your terminal. Send, read, and manage emails across multiple providers with natural language commands.
@@ -284,11 +284,11 @@ npm install -g mailos
 ```
 
 ### Direct Download
-Download the latest binary for your platform from [GitHub Releases](https://github.com/corp-os/emailos/releases).
+Download the latest binary for your platform from [GitHub Releases](https://github.com/anduimagui/emailos/releases).
 
 ### Build from Source
 ```bash
-git clone https://github.com/corp-os/emailos.git
+git clone https://github.com/anduimagui/emailos.git
 cd emailos
 go build -o mailos .
 ```
@@ -390,7 +390,7 @@ MailOS is proprietary software. A valid license is required for use.
 ### Resources
 - **Website**: https://email-os.com
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/corp-os/emailos/issues)
+- **Issues**: [GitHub Issues](https://github.com/anduimagui/emailos/issues)
 
 ### Common Issues
 
@@ -419,7 +419,7 @@ MailOS is proprietary software. A valid license is required for use.
 ### Building
 ```bash
 # Clone repository
-git clone https://github.com/corp-os/emailos.git
+git clone https://github.com/anduimagui/emailos.git
 cd emailos
 
 # Build binary
@@ -439,7 +439,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 - **Latest Version**: 0.1.9-dev (with IMAP draft synchronization)
 - **Downloads**: Available on [npm](https://www.npmjs.com/package/mailos)
-- **Stars**: [![GitHub stars](https://img.shields.io/github/stars/corp-os/emailos.svg)](https://github.com/corp-os/emailos/stargazers)
+- **Stars**: [![GitHub stars](https://img.shields.io/github/stars/anduimagui/emailos.svg)](https://github.com/anduimagui/emailos/stargazers)
 - **License**: [Proprietary](https://email-os.com)
 
 ## 📄 Changelog

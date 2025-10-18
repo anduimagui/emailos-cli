@@ -32,6 +32,7 @@ mailos send --to recipient@example.com --subject "Subject" --body "Message"
 | `--to` | `-t` | To recipients (comma-separated) | `--to user1@example.com,user2@example.com` |
 | `--cc` | `-c` | CC recipients | `--cc manager@example.com` |
 | `--bcc` | `-B` | BCC recipients | `--bcc archive@example.com` |
+| `--from` | | Send from specific email account | `--from speedrunner` or `--from work@company.com` |
 
 ### Format & Attachments
 
@@ -120,6 +121,28 @@ mailos send \
 ```bash
 mailos send --to user@example.com --subject "Test" --body "Message" --no-signature
 ```
+
+## Account Selection
+
+The `--from` flag allows you to send emails from specific email accounts when you have multiple accounts configured.
+
+### Usage
+```bash
+# Send from a specific account by nickname
+mailos send --to recipient@example.com --subject "Test" --body "Hello" --from speedrunner
+
+# Send from a specific account by email address
+mailos send --to recipient@example.com --subject "Test" --body "Hello" --from work@company.com
+```
+
+### Account Management
+- Use `mailos accounts` to list configured accounts and aliases
+- Use `mailos accounts --set alias@domain.com` to add new aliases/sub-emails
+- Account nicknames can be set during configuration
+- If `--from` is not specified, the default configured account is used
+- The account must be properly authenticated with valid credentials
+- Aliases must be manually added - EmailOS does not auto-sync from providers
+- For detailed alias management, see `mailos help accounts`
 
 ## Multiple Recipients
 

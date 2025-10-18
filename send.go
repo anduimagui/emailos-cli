@@ -22,6 +22,8 @@ type EmailMessage struct {
 	Attachments     []string
 	IncludeSignature bool
 	SignatureText   string
+	InReplyTo       string   // Message-ID being replied to
+	References      []string // Chain of Message-IDs in conversation
 }
 
 // SavedEmail represents an email saved to local storage
@@ -101,6 +103,30 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 	}
 	message.WriteString(fmt.Sprintf("Subject: %s\r\n", msg.Subject))
 	message.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+	
+	// Add threading headers if this is a reply
+	if msg.InReplyTo != "" {
+		// Ensure Message-ID is wrapped in angle brackets
+		inReplyTo := msg.InReplyTo
+		if !strings.HasPrefix(inReplyTo, "<") {
+			inReplyTo = "<" + inReplyTo + ">"
+		}
+		message.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", inReplyTo))
+	}
+	
+	if len(msg.References) > 0 {
+		// Ensure all Message-IDs in References are wrapped in angle brackets
+		var refs []string
+		for _, ref := range msg.References {
+			if !strings.HasPrefix(ref, "<") {
+				refs = append(refs, "<"+ref+">")
+			} else {
+				refs = append(refs, ref)
+			}
+		}
+		message.WriteString(fmt.Sprintf("References: %s\r\n", strings.Join(refs, " ")))
+	}
+	
 	message.WriteString("MIME-Version: 1.0\r\n")
 
 	// Add body

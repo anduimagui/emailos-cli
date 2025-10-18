@@ -578,7 +578,7 @@ func showInfo() error {
 	fmt.Printf("  AI Provider Setup        mailos help provider\n")
 	fmt.Printf("  Command Reference        mailos help commands\n")
 	fmt.Printf("  Troubleshooting          mailos help troubleshoot\n")
-	fmt.Printf("  GitHub Repository        https://github.com/corp-os/emailos\n")
+	fmt.Printf("  GitHub Repository        https://github.com/anduimagui/emailos\n")
 
 	// Environment Information
 	fmt.Println("\nEnvironment")
@@ -680,7 +680,7 @@ func ShowEnhancedInfo() error {
 	fmt.Printf("  AI Provider Setup        mailos help provider\n")
 	fmt.Printf("  Command Reference        mailos help commands\n")
 	fmt.Printf("  Troubleshooting          mailos help troubleshoot\n")
-	fmt.Printf("  GitHub Repository        https://github.com/corp-os/emailos\n")
+	fmt.Printf("  GitHub Repository        https://github.com/anduimagui/emailos\n")
 
 	// System Architecture (LLM Context)
 	fmt.Println("\nSystem Architecture")

@@ -53,6 +53,7 @@ func ReplyCommand(opts ReplyOptions) error {
 	fmt.Printf("📧 Replying to: %s\n", originalEmail.Subject)
 	fmt.Printf("   From: %s\n", originalEmail.From)
 	fmt.Printf("   Date: %s\n", originalEmail.Date.Format("Jan 2, 2006 at 3:04 PM"))
+	fmt.Printf("   Message-ID: %s\n", originalEmail.MessageID)
 
 	// Prepare reply
 	reply := DraftEmail{}
@@ -153,11 +154,13 @@ func ReplyCommand(opts ReplyOptions) error {
 	} else {
 		// Send the reply
 		msg := &EmailMessage{
-			To:      reply.To,
-			CC:      reply.CC,
-			BCC:     reply.BCC,
-			Subject: reply.Subject,
-			Body:    reply.Body,
+			To:         reply.To,
+			CC:         reply.CC,
+			BCC:        reply.BCC,
+			Subject:    reply.Subject,
+			Body:       reply.Body,
+			InReplyTo:  reply.InReplyTo,
+			References: reply.References,
 		}
 		
 		fmt.Printf("📤 Sending reply...\n")

@@ -54,7 +54,7 @@ func GenerateEmailStats(opts StatsOptions) (*EmailStats, error) {
 		Limit: 0,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get emails: %v", err)
+		return nil, fmt.Errorf("STATS_INBOX_READ_ERROR: Failed to retrieve emails from inbox for account '%s' for statistics generation. This could be due to: (1) Account not found or not configured, (2) Local inbox database access issues, (3) Corrupted email data, (4) Permission problems. Original error: %v", opts.AccountEmail, err)
 	}
 
 	if !opts.Until.IsZero() {

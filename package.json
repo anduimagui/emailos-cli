@@ -1,0 +1,11 @@
+{
+  "name": "emailos-docs",
+  "version": "1.0.0",
+  "description": "Documentation deployment for EmailOS",
+  "scripts": {
+    "deploy-docs": "wrangler pages deploy dist-docs --project-name docs-email-os --compatibility-date 2024-01-01"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

@@ -579,6 +579,77 @@ func AddAccount(config *Config, account AccountConfig) error {
 	return SaveConfig(config)
 }
 
+// AddNewAccount prompts user for account details and adds it to the global config
+func AddNewAccount(email string) error {
+	// Load current global config
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load current config: %v", err)
+	}
+
+	// Check if account already exists
+	accounts := GetAllAccounts(config)
+	for _, acc := range accounts {
+		if acc.Email == email {
+			return fmt.Errorf("account %s already exists", email)
+		}
+	}
+
+	fmt.Printf("\nSetting up account: %s\n", email)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	// Determine provider from email domain
+	provider := guessProviderFromEmail(email)
+	fmt.Printf("Detected provider: %s\n", provider)
+
+	// Prompt for app password
+	fmt.Printf("\nFor %s, you need an app-specific password.\n", provider)
+	fmt.Print("Enter app password: ")
+	var password string
+	fmt.Scanln(&password)
+
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+
+	// Create account config
+	newAccount := AccountConfig{
+		Email:    email,
+		Provider: provider,
+		Password: password,
+		Label:    "Secondary",
+	}
+
+	// Add account to config
+	if err := AddAccount(config, newAccount); err != nil {
+		return fmt.Errorf("failed to save account: %v", err)
+	}
+
+	fmt.Printf("✓ Successfully added account: %s\n", email)
+	return nil
+}
+
+// guessProviderFromEmail attempts to determine the email provider from the email domain
+func guessProviderFromEmail(email string) string {
+	domain := strings.ToLower(strings.Split(email, "@")[1])
+	
+	switch {
+	case strings.Contains(domain, "gmail.com") || strings.Contains(domain, "googlemail.com"):
+		return ProviderGmail
+	case strings.Contains(domain, "fastmail.") || strings.Contains(domain, "fm."):
+		return ProviderFastmail
+	case strings.Contains(domain, "outlook.") || strings.Contains(domain, "hotmail.") || strings.Contains(domain, "live."):
+		return ProviderOutlook
+	case strings.Contains(domain, "yahoo."):
+		return ProviderYahoo
+	case strings.Contains(domain, "zoho."):
+		return ProviderZoho
+	default:
+		// For unknown domains, default to fastmail since it works well with custom domains
+		return ProviderFastmail
+	}
+}
+
 // SetLocalAccountPreference sets the preferred account for the current local directory
 // This creates or updates a local .email/config.json with the active_account setting
 func SetLocalAccountPreference(accountEmail string) error {

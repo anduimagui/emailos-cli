@@ -11,7 +11,7 @@ npm install -g mailos
 
 ### Homebrew (macOS/Linux) - Coming Soon
 ```bash
-brew tap corp-os/mailos
+brew tap anduimagui/mailos
 brew install mailos
 ```
 
@@ -21,13 +21,13 @@ brew install mailos
 
 #### Apple Silicon (M1/M2/M3)
 ```bash
-curl -L https://github.com/corp-os/emailos/releases/latest/download/mailos-darwin-arm64.tar.gz | tar xz
+curl -L https://github.com/anduimagui/emailos/releases/latest/download/mailos-darwin-arm64.tar.gz | tar xz
 sudo mv mailos /usr/local/bin/
 ```
 
 #### Intel Macs
 ```bash
-curl -L https://github.com/corp-os/emailos/releases/latest/download/mailos-darwin-amd64.tar.gz | tar xz
+curl -L https://github.com/anduimagui/emailos/releases/latest/download/mailos-darwin-amd64.tar.gz | tar xz
 sudo mv mailos /usr/local/bin/
 ```
 
@@ -35,13 +35,13 @@ sudo mv mailos /usr/local/bin/
 
 #### x64/AMD64
 ```bash
-curl -L https://github.com/corp-os/emailos/releases/latest/download/mailos-linux-amd64.tar.gz | tar xz
+curl -L https://github.com/anduimagui/emailos/releases/latest/download/mailos-linux-amd64.tar.gz | tar xz
 sudo mv mailos /usr/local/bin/
 ```
 
 #### ARM64
 ```bash
-curl -L https://github.com/corp-os/emailos/releases/latest/download/mailos-linux-arm64.tar.gz | tar xz
+curl -L https://github.com/anduimagui/emailos/releases/latest/download/mailos-linux-arm64.tar.gz | tar xz
 sudo mv mailos /usr/local/bin/
 ```
 
@@ -50,7 +50,7 @@ sudo mv mailos /usr/local/bin/
 #### Using PowerShell
 ```powershell
 # Download the binary
-Invoke-WebRequest -Uri "https://github.com/corp-os/emailos/releases/latest/download/mailos-windows-amd64.tar.gz" -OutFile "mailos.tar.gz"
+Invoke-WebRequest -Uri "https://github.com/anduimagui/emailos/releases/latest/download/mailos-windows-amd64.tar.gz" -OutFile "mailos.tar.gz"
 
 # Extract (requires tar in Windows 10+)
 tar -xzf mailos.tar.gz
@@ -65,7 +65,7 @@ Move-Item mailos.exe "C:\Program Files\mailos\mailos.exe"
 #### Using WSL
 ```bash
 # Install the Linux version in WSL
-curl -L https://github.com/corp-os/emailos/releases/latest/download/mailos-linux-amd64.tar.gz | tar xz
+curl -L https://github.com/anduimagui/emailos/releases/latest/download/mailos-linux-amd64.tar.gz | tar xz
 sudo mv mailos /usr/local/bin/
 ```
 
@@ -78,7 +78,7 @@ sudo mv mailos /usr/local/bin/
 ### Build Steps
 ```bash
 # Clone the repository
-git clone https://github.com/corp-os/emailos.git
+git clone https://github.com/anduimagui/emailos.git
 cd emailos
 
 # Build the binary
@@ -222,8 +222,8 @@ If you encounter license validation errors:
 
 ## Getting Help
 
-- **Documentation**: https://github.com/corp-os/emailos/tree/main/docs
-- **Issues**: https://github.com/corp-os/emailos/issues
+- **Documentation**: https://github.com/anduimagui/emailos/tree/main/docs
+- **Issues**: https://github.com/anduimagui/emailos/issues
 - **Website**: https://email-os.com
 
 ## Next Steps

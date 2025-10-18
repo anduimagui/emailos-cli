@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/corp-os/emailos"
+	"github.com/anduimagui/emailos"
 )
 
 func main() {
