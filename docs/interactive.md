@@ -58,7 +58,7 @@ Type `/` to see available commands or execute directly:
 ### Analysis & Reports
 - `/stats` - View email statistics with visual charts
 - `/report` - Generate detailed email reports
-- `/search` - Advanced email search
+- `/search` - Advanced email search with fuzzy matching and boolean operators
 
 ### Configuration
 - `/template` - Manage email templates
@@ -146,6 +146,13 @@ Available templates:
 3. Review and edit if needed
 4. Confirm and send
 
+### Advanced Search Workflow
+1. Type: `/search -q "urgent AND project OR deadline"`
+2. Use boolean operators for complex queries
+3. Apply filters: `/search --date-range "last week" --has-attachments`
+4. Fuzzy search: `/search --from "supprt"` (finds "support")
+5. Size filters: `/search --min-size 1MB --attachment-size 500KB`
+
 ## Configuration
 
 ### Setting Default UI
@@ -182,6 +189,21 @@ mailos interactive
 mailos interactive
 /stats --range "Today"
 /read --range "Today" --unread
+```
+
+### Advanced Search Examples
+```
+# Boolean search with fuzzy matching
+/search -q "urgent OR important AND NOT spam"
+
+# Field-specific search
+/search -q "from:manager AND subject:project"
+
+# Date range with size filters
+/search --date-range "last week" --min-size 1MB
+
+# Complex query with attachments
+/search -q "contract OR agreement" --has-attachments --attachment-size 500KB
 ```
 
 ### Project-Specific Email

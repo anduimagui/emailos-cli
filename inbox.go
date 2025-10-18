@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -132,18 +133,9 @@ func FetchEmailsIncremental(config *Config, limit int) error {
 	// Build search criteria for incremental fetch
 	criteria := imap.NewSearchCriteria()
 	
-	// If we have a last email date, fetch emails since then
-	if !inboxData.LastEmailDate.IsZero() {
-		// Add 1 second to avoid duplicate fetch of the last email
-		since := inboxData.LastEmailDate.Add(1 * time.Second)
-		criteria.Since = since
-		fmt.Printf("Fetching emails since: %v\n", since.Format(time.RFC3339))
-	} else {
-		// First time fetch - get emails from last 30 days
-		since := time.Now().AddDate(0, 0, -30)
-		criteria.Since = since
-		fmt.Printf("First fetch - getting emails from last 30 days since: %v\n", since.Format(time.RFC3339))
-	}
+	// For a complete history sync, don't set any date criteria
+	// This will fetch ALL emails from the beginning of the account
+	fmt.Printf("Fetching ALL emails from account history...\n")
 	
 	// Search for messages
 	ids, err := c.Search(criteria)
@@ -444,4 +436,97 @@ func SyncEmailsForAccount(accountEmail string, limit int) error {
 	}
 	
 	return FetchEmailsIncremental(config, limit)
+}
+
+// UpdateLastSyncTime updates the last sync timestamp in the config
+func UpdateLastSyncTime() error {
+	config, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	config.LastSyncTime = time.Now().Format(time.RFC3339)
+
+	return SaveConfig(config)
+}
+
+// ShouldAutoSync checks if auto-sync should run based on last sync time
+func ShouldAutoSync() bool {
+	config, err := LoadConfig()
+	if err != nil {
+		return false
+	}
+
+	// Check if auto-sync is enabled (default to true if not set)
+	if config.AutoSync == false && config.LastSyncTime != "" {
+		// If AutoSync is explicitly set to false, don't auto-sync
+		return false
+	}
+
+	// If never synced, should sync
+	if config.LastSyncTime == "" {
+		return true
+	}
+
+	// Parse last sync time
+	lastSync, err := time.Parse(time.RFC3339, config.LastSyncTime)
+	if err != nil {
+		return true // If can't parse, sync to be safe
+	}
+
+	// Check if more than 24 hours have passed
+	return time.Since(lastSync) > 24*time.Hour
+}
+
+// RunAutoSyncIfNeeded runs sync automatically if needed
+func RunAutoSyncIfNeeded() error {
+	if !ShouldAutoSync() {
+		return nil
+	}
+
+	fmt.Println("Auto-syncing emails (last sync was more than 24 hours ago)...")
+	
+	// Use new global inbox system
+	config, err := LoadConfig()
+	if err == nil && config.Email != "" {
+		if err := FetchEmailsIncremental(config, 50); err != nil {
+			fmt.Printf("Warning: Failed to auto-sync to global inbox: %v\n", err)
+			return err
+		} else {
+			// Update last sync time
+			if err := UpdateLastSyncTime(); err != nil {
+				fmt.Printf("Warning: failed to update last sync time: %v\n", err)
+			}
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("no email account configured for auto-sync")
+}
+
+// sanitizeFilename removes or replaces invalid filename characters
+func sanitizeFilename(s string) string {
+	// Remove or replace invalid filename characters
+	replacer := strings.NewReplacer(
+		"/", "-",
+		"\\", "-",
+		":", "-",
+		"*", "-",
+		"?", "-",
+		"\"", "-",
+		"<", "-",
+		">", "-",
+		"|", "-",
+		"\n", " ",
+		"\r", " ",
+	)
+	s = replacer.Replace(s)
+	
+	// Trim spaces and limit length
+	s = strings.TrimSpace(s)
+	if len(s) > 100 {
+		s = s[:100]
+	}
+	
+	return s
 }

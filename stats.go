@@ -8,260 +8,407 @@ import (
 )
 
 type EmailStats struct {
-	TotalEmails      int
-	UnreadCount      int
-	ReadCount        int
-	EmailsByDate     map[string]int
-	EmailsBySender   map[string]int
-	EmailsByDomain   map[string]int
-	EmailsByHour     map[int]int
-	EmailsByWeekday  map[string]int
-	SubjectKeywords  map[string]int
-	AttachmentCount  int
-	AverageBodySize  int
-	TimeRange        string
-	QueryDescription string
+	AccountEmail     string                 `json:"account_email"`
+	TotalEmails      int                    `json:"total_emails"`
+	DateRange        DateRange              `json:"date_range"`
+	SenderStats      []ContactFrequency     `json:"sender_stats"`
+	RecipientStats   []ContactFrequency     `json:"recipient_stats"`
+	HourlyStats      map[int]int           `json:"hourly_stats"`
+	DailyStats       map[string]int        `json:"daily_stats"`
+	MonthlyStats     map[string]int        `json:"monthly_stats"`
+	TopDomains       []DomainFrequency     `json:"top_domains"`
 }
 
-func GenerateEmailStats(emails []*Email, query QueryOptions) *EmailStats {
-	// Apply advanced filters first
-	emails = query.FilterEmails(emails)
-	
-	stats := &EmailStats{
-		TotalEmails:      len(emails),
-		EmailsByDate:     make(map[string]int),
-		EmailsBySender:   make(map[string]int),
-		EmailsByDomain:   make(map[string]int),
-		EmailsByHour:     make(map[int]int),
-		EmailsByWeekday:  make(map[string]int),
-		SubjectKeywords:  make(map[string]int),
-		QueryDescription: query.GetDescription(),
-	}
-	
-	if query.TimeRange != "" {
-		stats.TimeRange = query.TimeRange
-	} else if query.Days > 0 {
-		stats.TimeRange = fmt.Sprintf("Last %d days", query.Days)
-	} else if !query.Since.IsZero() {
-		stats.TimeRange = fmt.Sprintf("Since %s", query.Since.Format("Jan 2, 2006"))
-	} else {
-		stats.TimeRange = "All time"
-	}
-	
-	totalBodySize := 0
-	
-	for _, email := range emails {
-		// Count by date
-		dateKey := email.Date.Format("2006-01-02")
-		stats.EmailsByDate[dateKey]++
-		
-		// Count by sender
-		sender := extractEmailAddress(email.From)
-		stats.EmailsBySender[sender]++
-		
-		// Count by domain
-		if idx := strings.Index(sender, "@"); idx >= 0 {
-			domain := sender[idx+1:]
-			stats.EmailsByDomain[domain]++
-		}
-		
-		// Count by hour
-		hour := email.Date.Hour()
-		stats.EmailsByHour[hour]++
-		
-		// Count by weekday
-		weekday := email.Date.Weekday().String()
-		stats.EmailsByWeekday[weekday]++
-		
-		// Extract subject keywords (simple implementation)
-		words := strings.Fields(strings.ToLower(email.Subject))
-		for _, word := range words {
-			// Skip common words
-			if len(word) > 3 && !isCommonWord(word) {
-				cleaned := strings.Trim(word, ".,!?;:")
-				if cleaned != "" {
-					stats.SubjectKeywords[cleaned]++
-				}
-			}
-		}
-		
-		// Count attachments
-		if len(email.Attachments) > 0 {
-			stats.AttachmentCount += len(email.Attachments)
-		}
-		
-		// Sum body sizes
-		totalBodySize += len(email.Body)
-	}
-	
-	if stats.TotalEmails > 0 {
-		stats.AverageBodySize = totalBodySize / stats.TotalEmails
-	}
-	
-	return stats
+type ContactFrequency struct {
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	Count     int       `json:"count"`
+	LastEmail time.Time `json:"last_email"`
 }
 
-func isCommonWord(word string) bool {
-	commonWords := map[string]bool{
-		"the": true, "and": true, "for": true, "are": true,
-		"you": true, "your": true, "with": true, "from": true,
-		"this": true, "that": true, "have": true, "will": true,
-		"been": true, "were": true, "what": true, "when": true,
-		"where": true, "which": true, "while": true, "about": true,
-	}
-	return commonWords[word]
+type DomainFrequency struct {
+	Domain string `json:"domain"`
+	Count  int    `json:"count"`
 }
 
-func FormatEmailStats(stats *EmailStats) string {
-	var output strings.Builder
-	
-	output.WriteString("\n")
-	output.WriteString("📊 Email Statistics Report\n")
-	output.WriteString("══════════════════════════════════════════════\n\n")
-	
-	output.WriteString(fmt.Sprintf("Query: %s\n", stats.QueryDescription))
-	output.WriteString(fmt.Sprintf("Time Range: %s\n", stats.TimeRange))
-	output.WriteString(fmt.Sprintf("Total Emails: %d\n", stats.TotalEmails))
-	
-	if stats.TotalEmails == 0 {
-		output.WriteString("\nNo emails found matching the criteria.\n")
-		return output.String()
-	}
-	
-	output.WriteString(fmt.Sprintf("Emails with Attachments: %d\n", stats.AttachmentCount))
-	output.WriteString(fmt.Sprintf("Average Email Size: %d bytes\n\n", stats.AverageBodySize))
-	
-	// Top senders
-	output.WriteString("📧 Top Senders:\n")
-	output.WriteString("──────────────────────────────────────────────\n")
-	topSenders := getTopItems(stats.EmailsBySender, 10)
-	for _, item := range topSenders {
-		percentage := float64(item.Count) * 100 / float64(stats.TotalEmails)
-		output.WriteString(fmt.Sprintf("  %-40s %4d (%5.1f%%)\n", 
-			truncateString(item.Key, 40), item.Count, percentage))
-	}
-	output.WriteString("\n")
-	
-	// Top domains
-	output.WriteString("🌐 Top Domains:\n")
-	output.WriteString("──────────────────────────────────────────────\n")
-	topDomains := getTopItems(stats.EmailsByDomain, 10)
-	for _, item := range topDomains {
-		percentage := float64(item.Count) * 100 / float64(stats.TotalEmails)
-		output.WriteString(fmt.Sprintf("  %-30s %4d (%5.1f%%)\n", 
-			truncateString(item.Key, 30), item.Count, percentage))
-	}
-	output.WriteString("\n")
-	
-	// Activity by hour
-	output.WriteString("⏰ Activity by Hour:\n")
-	output.WriteString("──────────────────────────────────────────────\n")
-	for hour := 0; hour < 24; hour++ {
-		count := stats.EmailsByHour[hour]
-		if count > 0 {
-			bar := strings.Repeat("█", min(count, 50))
-			output.WriteString(fmt.Sprintf("  %02d:00  %s %d\n", hour, bar, count))
-		}
-	}
-	output.WriteString("\n")
-	
-	// Activity by weekday
-	output.WriteString("📅 Activity by Weekday:\n")
-	output.WriteString("──────────────────────────────────────────────\n")
-	weekdays := []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
-	for _, day := range weekdays {
-		count := stats.EmailsByWeekday[day]
-		if count > 0 {
-			percentage := float64(count) * 100 / float64(stats.TotalEmails)
-			bar := strings.Repeat("█", int(percentage/2))
-			output.WriteString(fmt.Sprintf("  %-10s %s %d (%.1f%%)\n", day, bar, count, percentage))
-		}
-	}
-	output.WriteString("\n")
-	
-	// Top subject keywords
-	output.WriteString("🔤 Top Subject Keywords:\n")
-	output.WriteString("──────────────────────────────────────────────\n")
-	topKeywords := getTopItems(stats.SubjectKeywords, 15)
-	for i, item := range topKeywords {
-		if i > 0 && i%5 == 0 {
-			output.WriteString("\n")
-		}
-		output.WriteString(fmt.Sprintf("  %-12s(%d)", item.Key, item.Count))
-	}
-	output.WriteString("\n\n")
-	
-	// Daily distribution (last 30 days or available range)
-	output.WriteString("📈 Daily Distribution:\n")
-	output.WriteString("──────────────────────────────────────────────\n")
-	
-	// Sort dates
-	var dates []string
-	for date := range stats.EmailsByDate {
-		dates = append(dates, date)
-	}
-	sort.Strings(dates)
-	
-	// Show last 30 days or all if less
-	startIdx := 0
-	if len(dates) > 30 {
-		startIdx = len(dates) - 30
-	}
-	
-	maxCount := 0
-	for _, date := range dates[startIdx:] {
-		if stats.EmailsByDate[date] > maxCount {
-			maxCount = stats.EmailsByDate[date]
-		}
-	}
-	
-	for _, date := range dates[startIdx:] {
-		count := stats.EmailsByDate[date]
-		// Parse date for better formatting
-		if t, err := time.Parse("2006-01-02", date); err == nil {
-			dateFormatted := t.Format("Jan 02")
-			barLength := 0
-			if maxCount > 0 {
-				barLength = (count * 30) / maxCount
-			}
-			bar := strings.Repeat("█", barLength)
-			output.WriteString(fmt.Sprintf("  %s  %s %d\n", dateFormatted, bar, count))
-		}
-	}
-	
-	output.WriteString("\n══════════════════════════════════════════════\n")
-	
-	return output.String()
+type DateRange struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
 }
 
-type countItem struct {
-	Key   string
-	Count int
+type StatsOptions struct {
+	AccountEmail string
+	Since        time.Time
+	Until        time.Time
+	TopN         int
+	IncludeBody  bool
 }
 
-func getTopItems(items map[string]int, limit int) []countItem {
-	var result []countItem
-	for key, count := range items {
-		result = append(result, countItem{Key: key, Count: count})
+func GenerateEmailStats(opts StatsOptions) (*EmailStats, error) {
+	if opts.TopN == 0 {
+		opts.TopN = 10
 	}
-	
-	// Sort by count (descending)
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Count > result[j].Count
+
+	emails, err := GetEmailsFromInbox(opts.AccountEmail, ReadOptions{
+		Since: opts.Since,
+		Limit: 0,
 	})
-	
-	// Limit results
-	if len(result) > limit {
-		result = result[:limit]
+	if err != nil {
+		return nil, fmt.Errorf("failed to get emails: %v", err)
 	}
-	
-	return result
+
+	if !opts.Until.IsZero() {
+		var filteredEmails []*Email
+		for _, email := range emails {
+			if email.Date.Before(opts.Until) || email.Date.Equal(opts.Until) {
+				filteredEmails = append(filteredEmails, email)
+			}
+		}
+		emails = filteredEmails
+	}
+
+	stats := &EmailStats{
+		AccountEmail: opts.AccountEmail,
+		TotalEmails:  len(emails),
+		HourlyStats:  make(map[int]int),
+		DailyStats:   make(map[string]int),
+		MonthlyStats: make(map[string]int),
+	}
+
+	if len(emails) == 0 {
+		return stats, nil
+	}
+
+	stats.DateRange = DateRange{
+		Start: emails[len(emails)-1].Date,
+		End:   emails[0].Date,
+	}
+
+	senderCounts := make(map[string]*ContactFrequency)
+	recipientCounts := make(map[string]*ContactFrequency)
+	domainCounts := make(map[string]int)
+
+	for _, email := range emails {
+		processSender(email, senderCounts, domainCounts)
+		processRecipients(email, recipientCounts, opts.AccountEmail)
+		processTimeStats(email, stats)
+	}
+
+	stats.SenderStats = sortContactFrequencies(senderCounts, opts.TopN)
+	stats.RecipientStats = sortContactFrequencies(recipientCounts, opts.TopN)
+	stats.TopDomains = sortDomainFrequencies(domainCounts, opts.TopN)
+
+	return stats, nil
 }
 
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+func processSender(email *Email, senderCounts map[string]*ContactFrequency, domainCounts map[string]int) {
+	fromEmail := extractEmailAddress(email.From)
+	if fromEmail == "" {
+		return
 	}
-	return s[:maxLen-3] + "..."
+
+	if _, exists := senderCounts[fromEmail]; !exists {
+		senderCounts[fromEmail] = &ContactFrequency{
+			Email: fromEmail,
+			Name:  extractName(email.From),
+		}
+	}
+	
+	senderCounts[fromEmail].Count++
+	if email.Date.After(senderCounts[fromEmail].LastEmail) {
+		senderCounts[fromEmail].LastEmail = email.Date
+	}
+
+	domain := extractDomain(fromEmail)
+	if domain != "" {
+		domainCounts[domain]++
+	}
 }
 
+func processRecipients(email *Email, recipientCounts map[string]*ContactFrequency, accountEmail string) {
+	for _, recipient := range email.To {
+		recipientEmail := extractEmailAddress(strings.TrimSpace(recipient))
+		if recipientEmail == "" || recipientEmail == accountEmail {
+			continue
+		}
+
+		if _, exists := recipientCounts[recipientEmail]; !exists {
+			recipientCounts[recipientEmail] = &ContactFrequency{
+				Email: recipientEmail,
+				Name:  extractName(recipient),
+			}
+		}
+		
+		recipientCounts[recipientEmail].Count++
+		if email.Date.After(recipientCounts[recipientEmail].LastEmail) {
+			recipientCounts[recipientEmail].LastEmail = email.Date
+		}
+	}
+}
+
+func processTimeStats(email *Email, stats *EmailStats) {
+	hour := email.Date.Hour()
+	stats.HourlyStats[hour]++
+
+	day := email.Date.Format("2006-01-02")
+	stats.DailyStats[day]++
+
+	month := email.Date.Format("2006-01")
+	stats.MonthlyStats[month]++
+}
+
+func sortContactFrequencies(counts map[string]*ContactFrequency, topN int) []ContactFrequency {
+	var frequencies []ContactFrequency
+	for _, freq := range counts {
+		frequencies = append(frequencies, *freq)
+	}
+
+	sort.Slice(frequencies, func(i, j int) bool {
+		return frequencies[i].Count > frequencies[j].Count
+	})
+
+	if len(frequencies) > topN {
+		frequencies = frequencies[:topN]
+	}
+
+	return frequencies
+}
+
+func sortDomainFrequencies(counts map[string]int, topN int) []DomainFrequency {
+	var frequencies []DomainFrequency
+	for domain, count := range counts {
+		frequencies = append(frequencies, DomainFrequency{
+			Domain: domain,
+			Count:  count,
+		})
+	}
+
+	sort.Slice(frequencies, func(i, j int) bool {
+		return frequencies[i].Count > frequencies[j].Count
+	})
+
+	if len(frequencies) > topN {
+		frequencies = frequencies[:topN]
+	}
+
+	return frequencies
+}
+
+// extractEmailAddress is already defined in save.go
+// func extractEmailAddress(fromField string) string {
+// 	if strings.Contains(fromField, "<") && strings.Contains(fromField, ">") {
+// 		start := strings.Index(fromField, "<")
+// 		end := strings.Index(fromField, ">")
+// 		if start < end {
+// 			return strings.TrimSpace(fromField[start+1 : end])
+// 		}
+// 	}
+// 	return strings.TrimSpace(fromField)
+// }
+
+func extractName(fromField string) string {
+	if strings.Contains(fromField, "<") {
+		name := strings.TrimSpace(fromField[:strings.Index(fromField, "<")])
+		name = strings.Trim(name, "\"")
+		return name
+	}
+	return ""
+}
+
+// extractDomain is already defined in query.go
+// func extractDomain(email string) string {
+// 	parts := strings.Split(email, "@")
+// 	if len(parts) == 2 {
+// 		return strings.ToLower(parts[1])
+// 	}
+// 	return ""
+// }
+
+func (stats *EmailStats) ToMarkdown() string {
+	var md strings.Builder
+
+	md.WriteString(fmt.Sprintf("# Email Statistics for %s\n\n", stats.AccountEmail))
+	
+	md.WriteString("## Overview\n\n")
+	md.WriteString(fmt.Sprintf("- **Total Emails**: %d\n", stats.TotalEmails))
+	if !stats.DateRange.Start.IsZero() && !stats.DateRange.End.IsZero() {
+		md.WriteString(fmt.Sprintf("- **Date Range**: %s to %s\n", 
+			stats.DateRange.Start.Format("2006-01-02"), 
+			stats.DateRange.End.Format("2006-01-02")))
+	}
+	md.WriteString(fmt.Sprintf("- **Analysis Generated**: %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
+
+	if len(stats.SenderStats) > 0 {
+		md.WriteString("## Top Email Senders\n\n")
+		md.WriteString("*People who send me the most emails*\n\n")
+		md.WriteString("| Rank | Sender | Name | Email Count | Last Email |\n")
+		md.WriteString("|------|--------|------|-------------|------------|\n")
+		for i, sender := range stats.SenderStats {
+			name := sender.Name
+			if name == "" {
+				name = "_No name_"
+			}
+			md.WriteString(fmt.Sprintf("| %d | %s | %s | %d | %s |\n", 
+				i+1, sender.Email, name, sender.Count, 
+				sender.LastEmail.Format("2006-01-02")))
+		}
+		md.WriteString("\n")
+	}
+
+	if len(stats.RecipientStats) > 0 {
+		md.WriteString("## Top Email Recipients\n\n")
+		md.WriteString("*People I email the most*\n\n")
+		md.WriteString("| Rank | Recipient | Name | Email Count | Last Email |\n")
+		md.WriteString("|------|-----------|------|-------------|------------|\n")
+		for i, recipient := range stats.RecipientStats {
+			name := recipient.Name
+			if name == "" {
+				name = "_No name_"
+			}
+			md.WriteString(fmt.Sprintf("| %d | %s | %s | %d | %s |\n", 
+				i+1, recipient.Email, name, recipient.Count, 
+				recipient.LastEmail.Format("2006-01-02")))
+		}
+		md.WriteString("\n")
+	}
+
+	if len(stats.TopDomains) > 0 {
+		md.WriteString("## Top Email Domains\n\n")
+		md.WriteString("*Most common email domains in my inbox*\n\n")
+		md.WriteString("| Rank | Domain | Email Count |\n")
+		md.WriteString("|------|--------|-------------|\n")
+		for i, domain := range stats.TopDomains {
+			md.WriteString(fmt.Sprintf("| %d | %s | %d |\n", i+1, domain.Domain, domain.Count))
+		}
+		md.WriteString("\n")
+	}
+
+	md.WriteString(stats.generateHourlyStatsMarkdown())
+	md.WriteString(stats.generateMonthlyStatsMarkdown())
+
+	return md.String()
+}
+
+func (stats *EmailStats) generateHourlyStatsMarkdown() string {
+	if len(stats.HourlyStats) == 0 {
+		return ""
+	}
+
+	var md strings.Builder
+	md.WriteString("## Email Distribution by Hour of Day\n\n")
+	md.WriteString("*When I receive the most emails*\n\n")
+	md.WriteString("| Hour | Email Count | Visual |\n")
+	md.WriteString("|------|-------------|--------|\n")
+
+	maxCount := 0
+	for _, count := range stats.HourlyStats {
+		if count > maxCount {
+			maxCount = count
+		}
+	}
+
+	for hour := 0; hour < 24; hour++ {
+		count := stats.HourlyStats[hour]
+		visual := ""
+		if maxCount > 0 {
+			barLength := (count * 20) / maxCount
+			visual = strings.Repeat("█", barLength)
+		}
+		
+		timeLabel := fmt.Sprintf("%02d:00", hour)
+		md.WriteString(fmt.Sprintf("| %s | %d | %s |\n", timeLabel, count, visual))
+	}
+	md.WriteString("\n")
+
+	return md.String()
+}
+
+func (stats *EmailStats) generateMonthlyStatsMarkdown() string {
+	if len(stats.MonthlyStats) == 0 {
+		return ""
+	}
+
+	var md strings.Builder
+	md.WriteString("## Email Distribution by Month\n\n")
+	md.WriteString("*Email volume trends over time*\n\n")
+	md.WriteString("| Month | Email Count |\n")
+	md.WriteString("|-------|-------------|\n")
+
+	var months []string
+	for month := range stats.MonthlyStats {
+		months = append(months, month)
+	}
+	sort.Strings(months)
+
+	for _, month := range months {
+		count := stats.MonthlyStats[month]
+		md.WriteString(fmt.Sprintf("| %s | %d |\n", month, count))
+	}
+	md.WriteString("\n")
+
+	return md.String()
+}
+
+func GetAccountStats(accountEmail string, topN int) (string, error) {
+	if topN == 0 {
+		topN = 10
+	}
+
+	opts := StatsOptions{
+		AccountEmail: accountEmail,
+		TopN:         topN,
+	}
+
+	stats, err := GenerateEmailStats(opts)
+	if err != nil {
+		return "", err
+	}
+
+	return stats.ToMarkdown(), nil
+}
+
+func GetAccountStatsWithDateRange(accountEmail string, since, until time.Time, topN int) (string, error) {
+	if topN == 0 {
+		topN = 10
+	}
+
+	opts := StatsOptions{
+		AccountEmail: accountEmail,
+		Since:        since,
+		Until:        until,
+		TopN:         topN,
+	}
+
+	stats, err := GenerateEmailStats(opts)
+	if err != nil {
+		return "", err
+	}
+
+	return stats.ToMarkdown(), nil
+}
+
+func GetAllAccountsStats(topN int) (string, error) {
+	accounts, err := ListAccountInboxes()
+	if err != nil {
+		return "", fmt.Errorf("failed to list accounts: %v", err)
+	}
+
+	if len(accounts) == 0 {
+		return "No email accounts found with inbox data.\n", nil
+	}
+
+	var md strings.Builder
+	md.WriteString("# Email Statistics for All Accounts\n\n")
+
+	for _, account := range accounts {
+		accountStats, err := GetAccountStats(account, topN)
+		if err != nil {
+			md.WriteString(fmt.Sprintf("## Error for %s\n\nFailed to generate statistics: %v\n\n", account, err))
+			continue
+		}
+		md.WriteString(accountStats)
+		md.WriteString("---\n\n")
+	}
+
+	return md.String(), nil
+}

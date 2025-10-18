@@ -89,6 +89,7 @@ The CLI uses Cobra for command handling with the following main commands:
 - `setup` - Initial email configuration
 - `send` - Send emails
 - `read` - Read emails  
+- `search` - Advanced email search with fuzzy matching, boolean operators, and filters
 - `drafts` - Manage draft emails
 - `interactive` - Launch interactive terminal
 - `chat` - Launch AI chat interface

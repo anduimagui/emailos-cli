@@ -143,79 +143,6 @@ func SyncEmails(opts SyncOptions) error {
 	return nil
 }
 
-// UpdateLastSyncTime updates the last sync timestamp in the config
-func UpdateLastSyncTime() error {
-	config, err := LoadConfig()
-	if err != nil {
-		return err
-	}
-
-	config.LastSyncTime = time.Now().Format(time.RFC3339)
-
-	return SaveConfig(config)
-}
-
-// ShouldAutoSync checks if auto-sync should run based on last sync time
-func ShouldAutoSync() bool {
-	config, err := LoadConfig()
-	if err != nil {
-		return false
-	}
-
-	// Check if auto-sync is enabled (default to true if not set)
-	if config.AutoSync == false && config.LastSyncTime != "" {
-		// If AutoSync is explicitly set to false, don't auto-sync
-		return false
-	}
-
-	// If never synced, should sync
-	if config.LastSyncTime == "" {
-		return true
-	}
-
-	// Parse last sync time
-	lastSync, err := time.Parse(time.RFC3339, config.LastSyncTime)
-	if err != nil {
-		return true // If can't parse, sync to be safe
-	}
-
-	// Check if more than 24 hours have passed
-	return time.Since(lastSync) > 24*time.Hour
-}
-
-// RunAutoSyncIfNeeded runs sync automatically if needed
-func RunAutoSyncIfNeeded() error {
-	if !ShouldAutoSync() {
-		return nil
-	}
-
-	fmt.Println("Auto-syncing emails (last sync was more than 24 hours ago)...")
-	
-	// Use new global inbox system
-	config, err := LoadConfig()
-	if err == nil && config.Email != "" {
-		if err := FetchEmailsIncremental(config, 50); err != nil {
-			fmt.Printf("Warning: Failed to auto-sync to global inbox: %v\n", err)
-			// Fallback to legacy sync
-		} else {
-			// Update last sync time
-			if err := UpdateLastSyncTime(); err != nil {
-				fmt.Printf("Warning: failed to update last sync time: %v\n", err)
-			}
-			return nil
-		}
-	}
-	
-	// Legacy fallback
-	opts := SyncOptions{
-		Limit:       50, // Reasonable default for auto-sync
-		IncludeRead: false,
-		Verbose:     false,
-		Since:       time.Now().AddDate(0, 0, -7), // Sync last 7 days by default
-	}
-
-	return SyncEmails(opts)
-}
 
 func syncFolder(c *client.Client, folderName, outputDir string, opts SyncOptions) (int, error) {
 	_, err := c.Select(folderName, false)
@@ -453,28 +380,3 @@ func saveEmailToFile(email *Email, outputDir string) error {
 	return os.WriteFile(filepath, []byte(content.String()), 0644)
 }
 
-func sanitizeFilename(s string) string {
-	// Remove or replace invalid filename characters
-	replacer := strings.NewReplacer(
-		"/", "-",
-		"\\", "-",
-		":", "-",
-		"*", "-",
-		"?", "-",
-		"\"", "-",
-		"<", "-",
-		">", "-",
-		"|", "-",
-		"\n", " ",
-		"\r", " ",
-	)
-	s = replacer.Replace(s)
-	
-	// Trim spaces and limit length
-	s = strings.TrimSpace(s)
-	if len(s) > 100 {
-		s = s[:100]
-	}
-	
-	return s
-}
