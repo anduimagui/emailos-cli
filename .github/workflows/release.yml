@@ -84,6 +84,7 @@ jobs:
   publish-npm:
     needs: release
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +115,7 @@ jobs:
   update-homebrew:
     needs: [release]
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
