@@ -84,7 +84,6 @@ jobs:
   publish-npm:
     needs: release
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +92,7 @@ jobs:
         with:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
+          token: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify package version
         run: |
@@ -106,8 +106,8 @@ jobs:
         run: |
           cd npm
           echo "Checking npm whoami..."
-          npm whoami || echo "Not authenticated"
-          echo "Publishing with automation token..."
+          npm whoami
+          echo "Publishing package..."
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
