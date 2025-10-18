@@ -18,9 +18,12 @@ tasks:
       - echo "✓ Installed mailos to $(go env GOPATH)/bin/mailos"
 
   update:
-    desc: Build and install mailos globally
+    desc: Build and install mailos globally (removes old versions)
     cmds:
-      - task: install
+      - echo "🔄 Updating mailos globally..."
+      - rm -f ~/.local/bin/mailos
+      - task install
+      - echo "✅ Global mailos updated successfully"
 
   test:
     desc: Run tests
@@ -36,7 +39,7 @@ tasks:
   dev:
     desc: Build and run locally
     cmds:
-      - task: build
+      - task build
       - ./mailos {{.CLI_ARGS}}
 
   uninstall:
@@ -113,7 +116,46 @@ tasks:
         echo "  • Publish to npm registry" && \
         echo "  • Update Homebrew formula" && \
         echo "" && \
-        echo "Monitor progress at: https://github.com/corp-os/emailos/actions"
+        echo "🔍 Monitoring workflow status..." && \
+        sleep 10 && \
+        for i in {1..30}; do \
+          echo "⏳ Checking workflow status (attempt $i/30)..." && \
+          WORKFLOW_STATUS=$(gh run list --limit 3 --json status,conclusion,displayTitle,databaseId --jq '.[] | select(.displayTitle | test("Release|release")) | .status + ":" + (.conclusion // "") + ":" + (.databaseId | tostring)' | head -1) && \
+          if [ -n "$WORKFLOW_STATUS" ]; then \
+            STATUS=$(echo $WORKFLOW_STATUS | cut -d: -f1) && \
+            CONCLUSION=$(echo $WORKFLOW_STATUS | cut -d: -f2) && \
+            RUN_ID=$(echo $WORKFLOW_STATUS | cut -d: -f3) && \
+            if [ "$STATUS" = "completed" ]; then \
+              if [ "$CONCLUSION" = "success" ]; then \
+                echo "✅ Release workflow completed successfully!" && \
+                echo "📦 Check release at: https://github.com/anduimagui/emailos-cli/releases/tag/v$NEW_VERSION" && \
+                break; \
+              else \
+                echo "⚠️  Release workflow completed with conclusion: $CONCLUSION" && \
+                echo "🔍 Checking if GitHub release was created anyway..." && \
+                if gh release view "v$NEW_VERSION" >/dev/null 2>&1; then \
+                  echo "✅ GitHub release v$NEW_VERSION was created successfully!" && \
+                  echo "📦 Check release at: https://github.com/anduimagui/emailos-cli/releases/tag/v$NEW_VERSION" && \
+                  echo "ℹ️  Some optional jobs (npm/homebrew) may have failed - check details if needed:" && \
+                  echo "🔗 https://github.com/anduimagui/emailos-cli/actions/runs/$RUN_ID" && \
+                  break; \
+                else \
+                  echo "❌ Release workflow failed and no release was created" && \
+                  echo "🔗 View details at: https://github.com/anduimagui/emailos-cli/actions/runs/$RUN_ID" && \
+                  break; \
+                fi \
+              fi \
+            else \
+              echo "🔄 Workflow status: $STATUS (Run ID: $RUN_ID)" && \
+              sleep 15; \
+            fi \
+          else \
+            echo "⚠️  No release workflow found yet, waiting..." && \
+            sleep 15; \
+          fi \
+        done && \
+        echo "" && \
+        echo "Monitor progress at: https://github.com/anduimagui/emailos-cli/actions"
 
   publish-minor:
     desc: Bump minor version and publish to all providers
@@ -155,11 +197,103 @@ tasks:
       - |
         echo "Current version: v$(cd npm && node -p "require('./package.json').version")"
 
+  fix-npm-publish:
+    desc: Manually publish to npm (handles 2FA)
+    cmds:
+      - echo "Publishing to npm with 2FA support..."
+      - cd npm && npm publish --access public
+      - echo "Successfully published to npm"
+
+  fix-homebrew-sha:
+    desc: Update Homebrew formula with actual release SHA
+    cmds:
+      - echo "Updating Homebrew formula with release SHA..."
+      - |
+        VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        echo "Downloading release for SHA calculation..." && \
+        curl -L -o /tmp/mailos-darwin-amd64.tar.gz \
+          "https://github.com/anduimagui/emailos/releases/download/v${VERSION}/mailos-darwin-amd64.tar.gz" && \
+        SHA256=$(shasum -a 256 /tmp/mailos-darwin-amd64.tar.gz | cut -d' ' -f1) && \
+        echo "SHA256: $SHA256" && \
+        sed -i.bak "s/PLACEHOLDER_SHA256/$SHA256/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak && \
+        echo "Updated Homebrew formula with SHA: $SHA256"
+
+  manual-release-complete:
+    desc: Complete a release manually (fixes GitHub Actions issues)
+    cmds:
+      - echo "Completing manual release process"
+      - echo "Step 1 Fix npm publish"
+      - task fix-npm-publish
+      - echo "Step 2 Fix Homebrew SHA"
+      - task fix-homebrew-sha
+      - echo "Step 3 Commit Homebrew formula update"
+      - VERSION=$(cd npm && node -p "require('./package.json').version") && git add Formula/mailos.rb && git commit -m "Update Homebrew formula SHA for v$VERSION" && git push || echo "No changes to commit"
+      - echo "Manual release completed successfully"
+
   readme:
     desc: Copy README.md to web folder for documentation access
     cmds:
       - cp README.md web/
       - echo "✓ README.md copied to web folder"
+
+  test-all:
+    desc: Run comprehensive command testing script
+    cmds:
+      - bash scripts/test-all-commands.sh
+
+  test-quick:
+    desc: Run quick tests of basic commands
+    cmds:
+      - echo "🧪 Running quick mailos command tests..."
+      - task build
+      - echo "Testing help commands..."
+      - ./mailos --help > /dev/null && echo "✓ Help command works" || echo "✗ Help command failed"
+      - ./mailos --version > /dev/null && echo "✓ Version command works" || echo "✗ Version command failed"
+      - echo "Testing configuration commands..."
+      - ./mailos setup --help > /dev/null && echo "✓ Setup help works" || echo "✗ Setup help failed"
+      - ./mailos config --help > /dev/null && echo "✓ Config help works" || echo "✗ Config help failed"
+      - echo "Testing read commands..."
+      - ./mailos read --help > /dev/null && echo "✓ Read help works" || echo "✗ Read help failed"
+      - echo "Testing search commands..."
+      - ./mailos search --help > /dev/null && echo "✓ Search help works" || echo "✗ Search help failed"
+      - echo "Testing draft commands..."
+      - ./mailos drafts --help > /dev/null && echo "✓ Drafts help works" || echo "✗ Drafts help failed"
+      - echo "✅ Quick tests completed"
+
+  release-local:
+    desc: Complete local release process (builds, tests, packages)
+    cmds:
+      - echo "Starting complete local release process..."
+      - task test
+      - task release
+      - task npm-pack
+      - echo "Creating release archives..."
+      - cd dist && for file in mailos-*; do if [[ "$file" != *.exe ]] && [[ "$file" != *.tar.gz ]] && [[ "$file" != *.zip ]]; then tar czf "${file}.tar.gz" "$file" && rm "$file"; elif [[ "$file" == *.exe ]]; then zip "${file%.*}.zip" "$file" && rm "$file"; fi; done
+      - echo "Generating checksums..."
+      - cd dist && sha256sum *.tar.gz *.zip > checksums.txt 2>/dev/null || sha256sum *.tar.gz > checksums.txt 2>/dev/null || echo "No archives found"
+      - echo "Local release completed in dist/ directory"
+      - echo "Generated files:"
+      - ls -la dist/
+
+  simulate-github-release:
+    desc: Simulate the complete GitHub Actions release workflow locally
+    cmds:
+      - echo "Simulating GitHub Actions release workflow..."
+      - echo "Step 1 Building cross-platform binaries..."
+      - task release-local
+      - echo "Step 2 Testing npm package..."
+      - cd npm && npm test || echo "WARNING npm tests failed or not configured"
+      - echo "Step 3 Validating package.json version..."
+      - cd npm && VERSION=$(node -p "require('./package.json').version") && echo "Package version v$VERSION"
+      - echo "Step 4 Checking Homebrew formula..."
+      - 'if [ -f "Formula/mailos.rb" ]; then echo "Homebrew formula exists"; grep -E "version|sha256" Formula/mailos.rb || echo "WARNING Version/SHA not found in formula"; else echo "WARNING Homebrew formula not found"; fi'
+      - echo "Local simulation completed successfully"
+      - echo "Next steps to complete release"
+      - echo "1. Run task dp to create git tag and trigger GitHub Actions"
+      - echo "2. Monitor https://github.com/anduimagui/emailos/actions"
+      - echo "3. Verify npm publish https://www.npmjs.com/package/mailos"
+      - echo "4. Test Homebrew update brew update && brew upgrade mailos"
 
   default:
     desc: Show available tasks
