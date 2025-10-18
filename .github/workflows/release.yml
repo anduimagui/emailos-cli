@@ -104,8 +104,10 @@ jobs:
       - name: Publish to npm
         run: |
           cd npm
-          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
-          npm publish --access public --provenance
+          echo "Checking npm whoami..."
+          npm whoami || echo "Not authenticated"
+          echo "Publishing with automation token..."
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
