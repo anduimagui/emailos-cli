@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
   build:
@@ -109,7 +110,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   update-homebrew:
-    needs: release
+    needs: [release, publish-npm]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
