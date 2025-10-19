@@ -41,6 +41,7 @@ type AccountConfig struct {
 	FromEmail    string `json:"from_email,omitempty"`
 	ProfileImage string `json:"profile_image,omitempty"`
 	Label        string `json:"label,omitempty"`
+	Signature    string `json:"signature,omitempty"`
 }
 
 // LegacyConfig represents the old config format
@@ -505,18 +506,19 @@ func LoadAccountConfig(accountEmail string) (*Config, error) {
 	// Find the requested account
 	for _, acc := range accounts {
 		if acc.Email == accountEmail {
-			// Create a new config with the selected account as primary
+			// Create a new config with the selected account
 			config := &Config{
-				Provider:      acc.Provider,
-				Email:         acc.Email,
-				Password:      acc.Password,
-				FromName:      acc.FromName,
-				FromEmail:     acc.FromEmail,
-				ProfileImage:  acc.ProfileImage,
-				LicenseKey:    globalConfig.LicenseKey,
-				DefaultAICLI:  globalConfig.DefaultAICLI,
-				ActiveAccount: acc.Email,
-				Accounts:      globalConfig.Accounts,
+				Provider:          acc.Provider,
+				Email:             acc.Email,
+				Password:          acc.Password,
+				FromName:          acc.FromName,
+				FromEmail:         acc.FromEmail,
+				ProfileImage:      acc.ProfileImage,
+				SignatureOverride: acc.Signature,
+				LicenseKey:        globalConfig.LicenseKey,
+				DefaultAICLI:      globalConfig.DefaultAICLI,
+				ActiveAccount:     acc.Email,
+				Accounts:          globalConfig.Accounts,
 			}
 
 			// If account doesn't have all fields, inherit from global config
@@ -527,6 +529,14 @@ func LoadAccountConfig(accountEmail string) (*Config, error) {
 				config.Password = globalConfig.Password
 			}
 			if config.FromEmail == "" {
+				config.FromEmail = acc.Email
+			}
+			
+			// For secondary accounts with same provider as primary, use primary email for SMTP auth
+			// but keep the secondary email for the "from" field
+			if acc.Provider == globalConfig.Provider && acc.Email != globalConfig.Email {
+				// This is a secondary account/alias - use primary account for SMTP authentication
+				config.Email = globalConfig.Email
 				config.FromEmail = acc.Email
 			}
 
@@ -579,6 +589,30 @@ func AddAccount(config *Config, account AccountConfig) error {
 	return SaveConfig(config)
 }
 
+// SetAccountSignature sets the signature for a specific account
+func SetAccountSignature(email, signature string) error {
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %v", err)
+	}
+
+	// Check if this is the primary account
+	if config.Email == email {
+		config.SignatureOverride = signature
+		return SaveConfig(config)
+	}
+
+	// Check if this is a secondary account
+	for i, acc := range config.Accounts {
+		if acc.Email == email {
+			config.Accounts[i].Signature = signature
+			return SaveConfig(config)
+		}
+	}
+
+	return fmt.Errorf("account %s not found", email)
+}
+
 // AddNewAccount prompts user for account details and adds it to the global config
 func AddNewAccount(email string) error {
 	// Load current global config
@@ -601,6 +635,42 @@ func AddNewAccount(email string) error {
 	// Determine provider from email domain
 	provider := guessProviderFromEmail(email)
 	fmt.Printf("Detected provider: %s\n", provider)
+	
+	// For custom domains, confirm the provider
+	domain := strings.ToLower(strings.Split(email, "@")[1])
+	if !strings.Contains(domain, "gmail.com") && !strings.Contains(domain, "googlemail.com") && 
+	   !strings.Contains(domain, "fastmail.") && !strings.Contains(domain, "fm.") &&
+	   !strings.Contains(domain, "outlook.") && !strings.Contains(domain, "hotmail.") && 
+	   !strings.Contains(domain, "live.") && !strings.Contains(domain, "yahoo.") && 
+	   !strings.Contains(domain, "zoho.") {
+		fmt.Printf("Is this correct? If not, available providers are:\n")
+		fmt.Printf("  1. gmail (Google Gmail/G Suite)\n")
+		fmt.Printf("  2. fastmail (Fastmail/custom domains)\n")
+		fmt.Printf("  3. outlook (Microsoft Outlook/Hotmail)\n")
+		fmt.Printf("  4. yahoo (Yahoo Mail)\n")
+		fmt.Printf("  5. zoho (Zoho Mail)\n")
+		fmt.Printf("Enter provider name or press Enter to use '%s': ", provider)
+		
+		var userProvider string
+		fmt.Scanln(&userProvider)
+		
+		if userProvider != "" {
+			switch strings.ToLower(userProvider) {
+			case "gmail", "google":
+				provider = "gmail"
+			case "fastmail", "fastmail.com":
+				provider = "fastmail"
+			case "outlook", "microsoft", "hotmail":
+				provider = "outlook"
+			case "yahoo":
+				provider = "yahoo"
+			case "zoho":
+				provider = "zoho"
+			default:
+				fmt.Printf("Unknown provider '%s', using detected provider: %s\n", userProvider, provider)
+			}
+		}
+	}
 
 	// Prompt for app password
 	fmt.Printf("\nFor %s, you need an app-specific password.\n", provider)

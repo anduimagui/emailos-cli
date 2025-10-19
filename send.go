@@ -45,6 +45,121 @@ func Send(msg *EmailMessage) error {
 	return SendWithAccount(msg, "")
 }
 
+// PreviewEmail displays the complete email content without sending it
+func PreviewEmail(msg *EmailMessage, accountEmail string) error {
+	setup, err := InitializeMailSetup(accountEmail)
+	if err != nil {
+		return fmt.Errorf("failed to initialize mail setup: %v", err)
+	}
+	
+	config := setup.Config
+
+	// Prepare from email
+	fromEmail := config.Email
+	if config.FromEmail != "" {
+		fromEmail = config.FromEmail
+	}
+	
+	from := fromEmail
+	if config.FromName != "" {
+		from = fmt.Sprintf("%s <%s>", config.FromName, fromEmail)
+	}
+
+	// Build recipients list
+	allRecipients := append([]string{}, msg.To...)
+	allRecipients = append(allRecipients, msg.CC...)
+	allRecipients = append(allRecipients, msg.BCC...)
+
+	// Add signature if requested
+	body := msg.Body
+	bodyHTML := msg.BodyHTML
+	if msg.IncludeSignature && msg.SignatureText != "" {
+		body += msg.SignatureText
+		if bodyHTML != "" {
+			bodyHTML += strings.ReplaceAll(msg.SignatureText, "\n", "<br>")
+		}
+	}
+	
+	// Apply template with profile image if it exists
+	if TemplateExists() {
+		if config.ProfileImage != "" {
+			bodyHTML = ApplyTemplateWithProfile(body, bodyHTML, config.ProfileImage)
+		} else if bodyHTML != "" {
+			bodyHTML = ApplyTemplate(body, bodyHTML)
+		}
+	}
+
+	// Build email message for preview
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	message.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(msg.To, ", ")))
+	if len(msg.CC) > 0 {
+		message.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(msg.CC, ", ")))
+	}
+	if len(msg.BCC) > 0 {
+		message.WriteString(fmt.Sprintf("Bcc: %s\r\n", strings.Join(msg.BCC, ", ")))
+	}
+	message.WriteString(fmt.Sprintf("Subject: %s\r\n", msg.Subject))
+	message.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+	
+	// Add threading headers if this is a reply
+	if msg.InReplyTo != "" {
+		inReplyTo := msg.InReplyTo
+		if !strings.HasPrefix(inReplyTo, "<") {
+			inReplyTo = "<" + inReplyTo + ">"
+		}
+		message.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", inReplyTo))
+	}
+	
+	if len(msg.References) > 0 {
+		var refs []string
+		for _, ref := range msg.References {
+			if !strings.HasPrefix(ref, "<") {
+				refs = append(refs, "<"+ref+">")
+			} else {
+				refs = append(refs, ref)
+			}
+		}
+		message.WriteString(fmt.Sprintf("References: %s\r\n", strings.Join(refs, " ")))
+	}
+	
+	message.WriteString("MIME-Version: 1.0\r\n")
+
+	// Add body
+	if bodyHTML != "" {
+		boundary := fmt.Sprintf("==boundary_%d==", time.Now().Unix())
+		message.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", boundary))
+		message.WriteString("\r\n")
+
+		// Plain text part
+		message.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+		message.WriteString("\r\n")
+		message.WriteString(body)
+		message.WriteString("\r\n")
+
+		// HTML part
+		message.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		message.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
+		message.WriteString("\r\n")
+		message.WriteString(bodyHTML)
+		message.WriteString("\r\n")
+
+		message.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+	} else {
+		message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+		message.WriteString("\r\n")
+		message.WriteString(body)
+	}
+
+	// Display the preview
+	fmt.Println("=== EMAIL PREVIEW ===")
+	fmt.Println(message.String())
+	fmt.Println("=== END PREVIEW ===")
+	
+	return nil
+}
+
 // SendWithAccount sends an email using a specific account
 func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 	// For now, we'll skip attachment support in the simple implementation
@@ -173,7 +288,7 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 			smtpHost,
 			smtpPort,
 			auth,
-			config.Email,
+			fromEmail,
 			allRecipients,
 			message.String(),
 		)
@@ -188,7 +303,7 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 			smtpHost,
 			smtpPort,
 			auth,
-			config.Email,
+			fromEmail,
 			allRecipients,
 			message.String(),
 		)
@@ -201,7 +316,7 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 
 	// Plain SMTP (not recommended)
 	addr := fmt.Sprintf("%s:%d", smtpHost, smtpPort)
-	err = smtp.SendMail(addr, auth, config.Email, allRecipients, []byte(message.String()))
+	err = smtp.SendMail(addr, auth, fromEmail, allRecipients, []byte(message.String()))
 	if err != nil {
 		return err
 	}

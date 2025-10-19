@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # EmailOS (mailos) Comprehensive Command Testing Script
-# Tests all major commands with parameters extracted from core source files
+# Tests all major commands including new account management and signature features
+# Covers: help, config, accounts, send, search, stats, sync, drafts, templates, etc.
 
 echo "🧪 Testing mailos commands comprehensively..."
 echo "================================================="
@@ -64,6 +65,23 @@ echo -e "${BLUE}=== CONFIGURATION COMMANDS ===${NC}"
 
 run_test "Setup help" "./mailos setup --help"
 run_test "Config help" "./mailos config --help"
+
+echo ""
+
+# =============================================================================
+# ACCOUNT MANAGEMENT COMMANDS
+# =============================================================================
+echo -e "${BLUE}=== ACCOUNT MANAGEMENT COMMANDS ===${NC}"
+
+run_test "Accounts help" "./mailos accounts --help"
+run_test "List accounts" "./mailos accounts --list"
+run_test "Accounts command without flags (shows list)" "./mailos accounts"
+
+# Account management operations (these will show usage/errors without proper setup)
+run_test "Add account help syntax" "./mailos accounts --add"
+run_test "Set account help syntax" "./mailos accounts --set"
+run_test "Set signature help syntax" "./mailos accounts --set-signature"
+run_test "Clear session help syntax" "./mailos accounts --clear"
 
 echo ""
 
@@ -191,6 +209,30 @@ run_test "Sync limit 10 verbose" "./mailos sync --limit 10 --verbose"
 echo ""
 
 # =============================================================================
+# SEND COMMANDS
+# =============================================================================
+echo -e "${BLUE}=== SEND COMMANDS ===${NC}"
+
+run_test "Send help" "./mailos send --help"
+
+# Send command syntax tests (will fail without proper email setup)
+run_test "Send basic syntax test" "./mailos send --to test@example.com --subject 'Test' --body 'Test message'"
+run_test "Send with --from flag" "./mailos send --to test@example.com --from sender@example.com --subject 'Test' --body 'Test'"
+run_test "Send with CC" "./mailos send --to test@example.com --cc cc@example.com --subject 'Test' --body 'Test'"
+run_test "Send with BCC" "./mailos send --to test@example.com --bcc bcc@example.com --subject 'Test' --body 'Test'"
+run_test "Send plain text" "./mailos send --to test@example.com --subject 'Test' --body 'Test' --plain"
+run_test "Send no signature" "./mailos send --to test@example.com --subject 'Test' --body 'Test' --no-signature"
+run_test "Send custom signature" "./mailos send --to test@example.com --subject 'Test' --body 'Test' --signature 'Custom sig'"
+run_test "Send with file body" "./mailos send --to test@example.com --subject 'Test' --file nonexistent.txt"
+run_test "Send with attachments" "./mailos send --to test@example.com --subject 'Test' --body 'Test' --attach file.txt"
+
+# Send drafts functionality
+run_test "Send drafts help" "./mailos send --drafts --help"
+run_test "Send drafts dry run" "./mailos send --drafts --dry-run"
+
+echo ""
+
+# =============================================================================
 # DRAFTS COMMANDS (from src/core/drafts.go)
 # =============================================================================
 echo -e "${BLUE}=== DRAFTS COMMANDS ===${NC}"
@@ -282,6 +324,8 @@ echo -e "${BLUE}=== ADVANCED FLAG COMBINATIONS ===${NC}"
 run_test "Read all flags" "./mailos read --unread-only --from-address test --limit 5 --local-only --download-attach"
 run_test "Search all flags" "./mailos search --query test --from gmail --days 7 --has-attachments --case-sensitive --limit 10"
 run_test "Draft all flags" "./mailos drafts --to test@example.com --cc cc@example.com --subject Test --body Hello --priority high --plain-text"
+run_test "Send all flags" "./mailos send --to test@example.com --cc cc@example.com --bcc bcc@example.com --from sender@example.com --subject 'Test' --body 'Hello' --plain --no-signature"
+run_test "Account management combo" "./mailos accounts --set-signature 'user@example.com:Best regards, User'"
 
 echo ""
 
@@ -293,6 +337,17 @@ echo -e "${BLUE}=== ERROR HANDLING TESTS ===${NC}"
 run_test "Invalid command" "./mailos invalid-command"
 run_test "Invalid flag" "./mailos read --invalid-flag"
 run_test "Missing argument" "./mailos search --query"
+
+# Account management error handling
+run_test "Add account without email" "./mailos accounts --add"
+run_test "Set account without email" "./mailos accounts --set"
+run_test "Set signature without argument" "./mailos accounts --set-signature"
+run_test "Set signature invalid format" "./mailos accounts --set-signature 'invalid-format'"
+
+# Send command error handling
+run_test "Send without recipients" "./mailos send --subject 'Test' --body 'Test'"
+run_test "Send without subject" "./mailos send --to test@example.com --body 'Test'"
+run_test "Send nonexistent from account" "./mailos send --to test@example.com --from nonexistent@example.com --subject 'Test' --body 'Test'"
 
 echo ""
 

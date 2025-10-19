@@ -10,11 +10,26 @@ mailos template
 
 Opens interactive template editor to customize your email appearance.
 
+## Quick Start
+
+### View Existing Template
+```bash
+mailos template --open-browser
+```
+Opens your current template HTML file directly in the browser for quick visual inspection.
+
+### Edit Template Interactively
+```bash
+mailos template
+```
+Opens the full interactive template editor with design options.
+
 ## Command-Line Flags
 
 | Flag | Description | Example |
 |------|-------------|---------|
 | `--remove` | Remove existing template | `mailos template --remove` |
+| `--open-browser` | Open template HTML file in browser | `mailos template --open-browser` |
 
 ## Template Features
 
@@ -144,8 +159,20 @@ Pre-designed templates:
 
 ### Save Location
 Templates are stored in:
-- Global: `~/.email/template.html`
-- Local: `./.email/template.html`
+- Global: `~/.email/templates/default.html`
+- Local: `./.email/templates/default.html`
+
+### View Template in Browser
+```bash
+mailos template --open-browser
+```
+Instantly opens your current template HTML file in the default browser for visual review. This is useful for:
+- Quick visual inspection of template design
+- Testing template appearance without sending emails
+- Debugging layout issues
+- Reviewing HTML structure and styling
+
+The command automatically locates your template file and opens it using the system's default browser. If no template exists, it will show an error message.
 
 ### Apply Template
 Templates are automatically applied to:
@@ -260,11 +287,17 @@ Options for profile images:
 
 ## Testing Templates
 
-### Preview Mode
+### Browser Preview
 ```bash
-mailos template --preview
+mailos template --open-browser
 ```
-Sends test email to yourself.
+Opens template HTML file directly in browser for immediate visual inspection.
+
+### Email Preview
+```bash
+mailos send --to your@email.com --subject "Template Test" --body "Test content" --preview
+```
+Shows complete email content with template applied before sending.
 
 ### Test Across Clients
 Test in:

@@ -702,9 +702,14 @@ The template will be saved and used for all future emails.`,
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		remove, _ := cmd.Flags().GetBool("remove")
+		openBrowser, _ := cmd.Flags().GetBool("open-browser")
 		
 		if remove {
 			return mailos.RemoveTemplate()
+		}
+		
+		if openBrowser {
+			return mailos.OpenTemplateInBrowser()
 		}
 		
 		return mailos.ManageTemplate()
@@ -923,6 +928,7 @@ var sendCmd = &cobra.Command{
 		noSignature, _ := cmd.Flags().GetBool("no-signature")
 		signature, _ := cmd.Flags().GetString("signature")
 		from, _ := cmd.Flags().GetString("from")
+		preview, _ := cmd.Flags().GetBool("preview")
 
 		if len(to) == 0 {
 			return fmt.Errorf("at least one recipient is required")
@@ -981,8 +987,6 @@ var sendCmd = &cobra.Command{
 			}
 		}
 
-		fmt.Printf("Sending email to %s...\n", strings.Join(to, ", "))
-		
 		// Create email message
 		msg := &mailos.EmailMessage{
 			To:          to,
@@ -1008,6 +1012,11 @@ var sendCmd = &cobra.Command{
 			}
 		}
 
+		if preview {
+			return mailos.PreviewEmail(msg, from)
+		}
+
+		fmt.Printf("Sending email to %s...\n", strings.Join(to, ", "))
 		if err := mailos.SendWithAccount(msg, from); err != nil {
 			return fmt.Errorf("failed to send email: %v", err)
 		}
@@ -1700,10 +1709,47 @@ var markReadCmd = &cobra.Command{
 var accountsCmd = &cobra.Command{
 	Use:   "accounts",
 	Short: "Manage email accounts",
+	Long: `Manage email accounts
+
+Examples:
+  mailos accounts --list                                    # List available accounts
+  mailos accounts --add user@example.com                   # Add a new email account
+  mailos accounts --set user@example.com                   # Set default account for this session
+  mailos accounts --set-signature user@example.com:"Best regards, John"  # Set account signature
+  mailos accounts --clear                                   # Clear session default`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		setAccount, _ := cmd.Flags().GetString("set")
+		addAccount, _ := cmd.Flags().GetString("add")
+		setSignature, _ := cmd.Flags().GetString("set-signature")
 		clearSession, _ := cmd.Flags().GetBool("clear")
 		listAccounts, _ := cmd.Flags().GetBool("list")
+		
+		// Handle set signature
+		if setSignature != "" {
+			parts := strings.SplitN(setSignature, ":", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid format. Use: email:signature")
+			}
+			email, signature := parts[0], parts[1]
+			
+			if err := mailos.SetAccountSignature(email, signature); err != nil {
+				return fmt.Errorf("failed to set signature: %v", err)
+			}
+			fmt.Printf("✓ Set signature for %s\n", email)
+			return nil
+		}
+		
+		// Handle add account
+		if addAccount != "" {
+			if err := mailos.AddNewAccount(addAccount); err != nil {
+				return fmt.Errorf("failed to add account: %v", err)
+			}
+			fmt.Printf("✓ Successfully added account: %s\n", addAccount)
+			fmt.Println("You can now use this account with:")
+			fmt.Printf("  mailos accounts --set %s\n", addAccount)
+			fmt.Printf("  mailos send --from %s --to recipient@example.com --subject \"Subject\" --body \"Message\"\n", addAccount)
+			return nil
+		}
 		
 		// Handle clear session
 		if clearSession {
@@ -1742,6 +1788,11 @@ var accountsCmd = &cobra.Command{
 				} else {
 					return err
 				}
+			}
+			
+			// Also set local preference so it persists for this directory
+			if err := mailos.SetLocalAccountPreference(setAccount); err != nil {
+				fmt.Printf("Note: Could not save local preference: %v\n", err)
 			}
 			
 			fmt.Printf("✓ Set session default account to: %s\n", setAccount)
@@ -2535,6 +2586,8 @@ func init() {
 	
 	// Accounts command flags
 	accountsCmd.Flags().String("set", "", "Set session default account")
+	accountsCmd.Flags().String("add", "", "Add a new email account")
+	accountsCmd.Flags().String("set-signature", "", "Set signature for an account (format: email:signature)")
 	accountsCmd.Flags().Bool("clear", false, "Clear session default account")
 	accountsCmd.Flags().Bool("list", false, "List available accounts")
 	
@@ -2588,6 +2641,7 @@ func init() {
 	sendCmd.Flags().BoolP("no-signature", "S", false, "No signature")
 	sendCmd.Flags().String("signature", "", "Custom signature")
 	sendCmd.Flags().String("from", "", "Send from specific email account (account nickname or email)")
+	sendCmd.Flags().Bool("preview", false, "Preview the complete email without sending")
 	
 	// Send --drafts specific flags
 	sendCmd.Flags().Bool("drafts", false, "Send all draft emails from .email/drafts folder")
@@ -2693,6 +2747,7 @@ func init() {
 	
 	// Template command flags
 	templateCmd.Flags().Bool("remove", false, "Remove existing template")
+	templateCmd.Flags().Bool("open-browser", false, "Open template HTML file in browser")
 	
 	// Configure command flags
 	configureCmd.Flags().Bool("quick", false, "Quick configuration menu")
