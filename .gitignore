@@ -34,3 +34,4 @@ build/
 /test_local
 emailos.tar.gz
 /attachments
+.env
