@@ -1,8 +1,8 @@
 class Mailos < Formula
   desc "Command-line email client powered by AI"
   homepage "https://email-os.com"
-  url "https://github.com/anduimagui/emailos-cli/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "PLACEHOLDER_SHA256"
+  url "https://github.com/anduimagui/emailos-cli/archive/refs/tags/v0.1.38tar.gz"
+  sha256 "c002a8b28ddd4ec98341571126658680bb578ccd56c7bbf4613dba2c30483248"
   license "Proprietary"
   head "https://github.com/anduimagui/emailos-cli.git", branch: "main"
 
