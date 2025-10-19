@@ -1,6 +1,6 @@
 {
   "name": "mailos",
-  "version": "0.1.42",
+  "version": "0.1.43",
   "description": "Command-line email client with AI integration and support for multiple providers",
   "keywords": [
     "email",
@@ -29,9 +29,14 @@
   },
   "scripts": {
     "postinstall": "node scripts/install.js",
-    "preuninstall": "node scripts/uninstall.js",
-    "prepublishOnly": "rm -rf bin"
+    "preuninstall": "node scripts/uninstall.js"
   },
+  "files": [
+    "bin/",
+    "scripts/",
+    "index.js",
+    "README.md"
+  ],
   "engines": {
     "node": ">=14.0.0"
   },
@@ -44,9 +49,5 @@
     "x64",
     "arm64"
   ],
-  "dependencies": {
-    "node-fetch": "^2.6.7",
-    "tar": "^6.1.11",
-    "rimraf": "^3.0.2"
-  }
+  "dependencies": {}
 }
