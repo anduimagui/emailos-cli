@@ -43,6 +43,11 @@ jobs:
       - name: Tidy modules
         run: go mod tidy
         
+      - name: Security Scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+        
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
@@ -72,6 +77,21 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate Security Metadata
+        run: |
+          echo "## Security Information" > security-info.md
+          echo "- **Build Date:** $(date -u)" >> security-info.md
+          echo "- **Go Version:** $(go version)" >> security-info.md
+          echo "- **Commit SHA:** ${GITHUB_SHA}" >> security-info.md
+          echo "- **Vulnerability Scan:** Passed" >> security-info.md
+          echo "- **Signed:** Yes (GitHub attestation)" >> security-info.md
+          echo "" >> security-info.md
+          echo "### Verification" >> security-info.md
+          echo "\`\`\`bash" >> security-info.md
+          echo "# Verify release authenticity:" >> security-info.md
+          echo "gh attestation verify mailos-*.tar.gz --owner anduimagui" >> security-info.md
+          echo "\`\`\`" >> security-info.md
+
       - name: Create Release
         uses: softprops/action-gh-release@a74c6b72af54cfa997e81df42d94703d6313a2d0  # v2.0.6
         with:
@@ -79,6 +99,8 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          append_body: true
+          body_path: security-info.md
 
   publish-npm:
     needs: release
