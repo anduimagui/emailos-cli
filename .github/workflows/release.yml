@@ -147,12 +147,15 @@ jobs:
           sed -i "s/v[0-9.]*/${VERSION}/g" Formula/mailos.rb
           sed -i "s/PLACEHOLDER_SHA256/${SHA256}/g" Formula/mailos.rb
 
-      - name: Create Pull Request to homebrew-mailos
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Update mailos to ${{ env.VERSION }}"
-          title: "Update mailos to ${{ env.VERSION }}"
-          body: "Automated update of mailos Homebrew formula to version ${{ env.VERSION }}"
-          branch: update-${{ env.VERSION }}
-          base: main
+      - name: Commit Homebrew formula update
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if git diff --quiet Formula/mailos.rb; then
+            echo "No changes to Homebrew formula"
+          else
+            git add Formula/mailos.rb
+            git commit -m "Update Homebrew formula to ${VERSION}"
+            git push origin main
+            echo "✅ Homebrew formula updated to ${VERSION}"
+          fi
