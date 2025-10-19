@@ -156,6 +156,6 @@ jobs:
           else
             git add Formula/mailos.rb
             git commit -m "Update Homebrew formula to ${VERSION}"
-            git push origin main
+            git push origin HEAD:main
             echo "✅ Homebrew formula updated to ${VERSION}"
           fi
