@@ -123,9 +123,11 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          # Wait for release assets to be available
+          echo "Downloading release asset with GitHub authentication..."
+          # Use gh to download the release asset with authentication
           for i in {1..10}; do
-            if wget -q https://github.com/anduimagui/emailos-cli/releases/download/${VERSION}/mailos-darwin-amd64.tar.gz; then
+            if gh release download "${VERSION}" --pattern "mailos-darwin-amd64.tar.gz" --clobber; then
+              echo "Successfully downloaded mailos-darwin-amd64.tar.gz"
               break
             fi
             echo "Waiting for release assets... attempt $i/10"
@@ -137,6 +139,8 @@ jobs:
           fi
           SHA256=$(sha256sum mailos-darwin-amd64.tar.gz | cut -d' ' -f1)
           echo "SHA256=${SHA256}" >> $GITHUB_ENV
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Homebrew formula
         run: |
