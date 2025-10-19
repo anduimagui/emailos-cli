@@ -3,6 +3,8 @@
 
 # Binary executables
 /mailos
+mailos-*
+test-mailos*
 *.exe
 *.dll
 *.so
@@ -34,4 +36,31 @@ build/
 /test_local
 emailos.tar.gz
 /attachments
-.env
+
+# NPM package build artifacts
+npm/bin/
+npm/mailos
+npm/test-bin/
+npm/*.tar.gz
+
+# Test directories
+test-*/
+test-npm-install/
+
+# Downloaded release archives
+*.tar.gz
+
+# Go build cache and module cache
+go.work
+go.work.sum
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
