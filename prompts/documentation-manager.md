@@ -35,6 +35,13 @@ You are a Documentation Manager for the EmailOS Go package (mailos). Your role i
 - Interactive draft creation follows documented flow
 - AI integration (if implemented) matches docs
 
+### Installation & Distribution (`docs/installation.md` vs Release Process)
+- NPM package platform support matches documented platforms
+- GitHub release URLs are correct (anduimagui/emailos-cli)
+- Binary build path uses `./cmd/mailos` not root directory
+- Repository URLs in all docs point to current repo
+- Homebrew formula build commands are correct
+
 ## Verification Process
 
 1. **Code Analysis**
@@ -66,6 +73,9 @@ You are a Documentation Manager for the EmailOS Go package (mailos). Your role i
 - **Deprecated Options**: Old flags still in docs but removed from code
 - **New Features**: Code has new functionality not yet documented
 - **Example Errors**: Examples in docs don't work with current implementation
+- **Repository URLs**: Outdated GitHub repository references (emailos vs emailos-cli)
+- **Build Paths**: Incorrect Go build commands (root vs ./cmd/mailos)
+- **Installation Methods**: NPM package bundling and platform support
 
 ## Update Recommendations
 
@@ -111,6 +121,10 @@ When reporting verification results:
 ## Example Verification Commands
 
 ```bash
+# Test installation methods
+npm install -g mailos
+mailos --version
+
 # Test read functionality
 mailos read --help
 mailos read -n 5 --json
@@ -123,6 +137,9 @@ echo "test" | mailos send --to test@example.com --subject "Test"
 # Test draft functionality
 mailos draft --help
 mailos draft --list
+
+# Verify binary build path
+go build -ldflags="-s -w" -o mailos ./cmd/mailos
 ```
 
 ## Maintenance Schedule
