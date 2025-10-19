@@ -144,8 +144,12 @@ jobs:
 
       - name: Update Homebrew formula
         run: |
-          sed -i "s/v[0-9.]*/${VERSION}/g" Formula/mailos.rb
+          # Update version in URL line only
+          sed -i "s|archive/refs/tags/v[0-9.]*|archive/refs/tags/${VERSION}|g" Formula/mailos.rb
+          # Update SHA256 placeholder
           sed -i "s/PLACEHOLDER_SHA256/${SHA256}/g" Formula/mailos.rb
+          echo "Updated Homebrew formula:"
+          cat Formula/mailos.rb
 
       - name: Commit Homebrew formula update
         run: |
