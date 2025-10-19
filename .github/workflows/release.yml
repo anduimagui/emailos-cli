@@ -103,10 +103,15 @@ jobs:
           body_path: security-info.md
 
   publish-npm:
-    needs: release
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b  # v4.1.4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e  # v4.1.7
+        with:
+          path: artifacts
 
       - name: Setup Node.js
         uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
@@ -122,6 +127,30 @@ jobs:
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "Package version: $PACKAGE_VERSION"
           echo "Expected version: $VERSION"
+
+      - name: Prepare NPM package with all platform binaries
+        run: |
+          cd npm
+          mkdir -p bin
+          echo "Preparing NPM package with all platform binaries..."
+          
+          # Extract all platform binaries from artifacts
+          for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 windows-amd64; do
+            echo "Processing mailos-${platform}..."
+            
+            # Extract binary from artifact tar.gz
+            tar -xzf "../artifacts/mailos-${platform}/mailos-${platform}.tar.gz" -C .
+            
+            # Move binary to bin directory with platform suffix
+            if [[ "$platform" == "windows-amd64" ]]; then
+              mv mailos.exe "bin/mailos-${platform}.exe"
+            else
+              mv mailos "bin/mailos-${platform}"
+            fi
+          done
+          
+          echo "Prepared binaries for NPM package:"
+          ls -la bin/
 
       - name: Publish to npm
         run: |
