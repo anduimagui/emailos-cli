@@ -54,7 +54,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          go build -ldflags="-s -w -X main.version=${VERSION}" -o mailos${{ matrix.ext }} .
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o mailos${{ matrix.ext }} ./cmd/mailos
 
       - name: Create archive
         run: |
