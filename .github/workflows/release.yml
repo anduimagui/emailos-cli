@@ -113,7 +113,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   update-homebrew:
-    needs: [release]
+    needs: [release, publish-npm]
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
