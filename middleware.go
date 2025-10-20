@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 	
 	"github.com/charmbracelet/lipgloss"
 )
 
-// EnsureInitialized validates that the system is properly configured with a valid license
+// EnsureInitialized validates that the system is properly configured
 // This should be called before any command that requires email configuration
 func EnsureInitialized() error {
 	// Check if config exists
@@ -18,47 +19,16 @@ func EnsureInitialized() error {
 		return Setup()
 	}
 	
-	// Load config to validate license
+	// Load config 
 	config, err := LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %v", err)
 	}
 	
-	// Check if license key exists
-	if config.LicenseKey == "" {
-		// Run setup automatically when no license key exists
+	// Email configuration is required, but license is now optional
+	if config.Email == "" || config.Password == "" {
+		// Run setup to configure email if missing
 		return Setup()
-	}
-	
-	// Validate license using quick validation (with cache)
-	lm := GetLicenseManager()
-	if err := lm.QuickValidate(config.LicenseKey); err != nil {
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("⚠️  LICENSE VALIDATION FAILED")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println()
-		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-		fmt.Println(errorStyle.Render("License validation failed"))
-		fmt.Println()
-		
-		// Check if we're in grace period
-		if lm.IsInGracePeriod() {
-			fmt.Println("📌 You are currently in a grace period.")
-			fmt.Println("   Please ensure you have an active internet connection")
-			fmt.Println("   to revalidate your license.")
-			fmt.Println()
-			// Continue to auto-sync check even in grace period
-		} else {
-			fmt.Println("Your license may have expired or been revoked.")
-			fmt.Println()
-			fmt.Println("Options:")
-			fmt.Println("1. Check your internet connection and try again")
-			fmt.Printf("2. Visit https://%s/checkout to renew your license\n", APP_SITE)
-			fmt.Println("3. Contact support if you believe this is an error")
-			fmt.Println()
-			fmt.Println("Run 'mailos setup' to enter a new license key.")
-			return fmt.Errorf("valid license required to continue")
-		}
 	}
 	
 	// Check if auto-sync is needed (run in background, don't block)
@@ -69,6 +39,46 @@ func EnsureInitialized() error {
 	}()
 	
 	return nil
+}
+
+// IsSubscribed checks if the user has a valid subscription
+// Returns true if user has valid license, false otherwise
+// This function prioritizes cache and minimizes API calls for security
+func IsSubscribed() bool {
+	config, err := LoadConfig()
+	if err != nil {
+		return false
+	}
+	
+	// No license key means not subscribed
+	if config.LicenseKey == "" {
+		return false
+	}
+	
+	// Get license manager but only use cached data for security
+	lm := GetLicenseManager()
+	
+	// First check if we have valid cached license (no API call)
+	if cache := lm.GetCachedLicense(); cache != nil && cache.Key == config.LicenseKey {
+		// Check if cache is still valid (not expired)
+		if cache.ExpiresAt.After(time.Now()) {
+			return true
+		}
+	}
+	
+	// If cache expired, check grace period (no API call)
+	if lm.IsInGracePeriod() {
+		return true
+	}
+	
+	// Only make API call in background, don't block or expose errors
+	go func() {
+		// Silent background validation - don't expose results to user context
+		lm.QuickValidate(config.LicenseKey)
+	}()
+	
+	// Default to not subscribed if no valid cache
+	return false
 }
 
 // enterLicenseKey prompts the user to enter a license key and saves it

@@ -54,7 +54,7 @@ func manageTemplateWithName(templateName string) error {
 	fmt.Println("Customize your email template to create beautiful,")
 	fmt.Println("branded emails with your own design.")
 	fmt.Println()
-	fmt.Println("The template editor allows you to:")
+	fmt.Println("Template customization allows you to:")
 	fmt.Println("• Design a custom HTML email template")
 	fmt.Println("• Preview your design in real-time")
 	fmt.Println("• Use {{BODY}} placeholder for email content")
@@ -72,25 +72,13 @@ func manageTemplateWithName(templateName string) error {
 		}
 	}
 
-	fmt.Println("Opening the EmailOS Template Editor in your browser...")
-	fmt.Println("URL: https://email-os.com/editor")
-	fmt.Println()
-	
-	// Open browser
-	editorURL := "https://email-os.com/editor"
-	if err := openBrowserURL(editorURL); err != nil {
-		fmt.Printf("Could not open browser automatically.\n")
-		fmt.Printf("Please manually visit: %s\n", editorURL)
-	} else {
-		fmt.Println("✓ Browser opened")
-	}
 	
 	fmt.Println()
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("INSTRUCTIONS")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	fmt.Println("1. Design your template in the browser editor")
+	fmt.Println("1. Design your template using any HTML editor or tool")
 	fmt.Println("2. Use {{BODY}} where email content should appear")
 	fmt.Println("3. Use {{PROFILE_IMAGE}} where profile image should appear (optional)")
 	fmt.Println("4. Copy the HTML code when you're satisfied")

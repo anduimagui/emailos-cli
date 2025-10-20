@@ -10,6 +10,7 @@ import (
 	
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
+	"github.com/russross/blackfriday/v2"
 )
 
 type EmailMessage struct {
@@ -22,6 +23,7 @@ type EmailMessage struct {
 	Attachments     []string
 	IncludeSignature bool
 	SignatureText   string
+	UseTemplate     bool     // Whether to apply HTML template
 	InReplyTo       string   // Message-ID being replied to
 	References      []string // Chain of Message-IDs in conversation
 }
@@ -80,8 +82,23 @@ func PreviewEmail(msg *EmailMessage, accountEmail string) error {
 		}
 	}
 	
-	// Apply template with profile image if it exists
-	if TemplateExists() {
+	// Add EmailOS footer only for non-subscribed users
+	if !IsSubscribed() {
+		emailOSFooter := "\n\nSent with EmailOS https://email-os.com/"
+		emailOSFooterHTML := "<br><br>Sent with <a href=\"https://email-os.com/\">EmailOS</a>"
+		
+		body += emailOSFooter
+		if bodyHTML != "" {
+			bodyHTML += emailOSFooterHTML
+		} else {
+			bodyHTML = strings.ReplaceAll(body, "\n", "<br>")
+		}
+	} else if bodyHTML == "" {
+		bodyHTML = strings.ReplaceAll(body, "\n", "<br>")
+	}
+	
+	// Apply template with profile image if it exists and UseTemplate is true
+	if msg.UseTemplate && TemplateExists() {
 		if config.ProfileImage != "" {
 			bodyHTML = ApplyTemplateWithProfile(body, bodyHTML, config.ProfileImage)
 		} else if bodyHTML != "" {
@@ -202,10 +219,25 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 		}
 	}
 	
-	// Apply template with profile image if it exists
-	if config.ProfileImage != "" || TemplateExists() {
+	// Add EmailOS footer only for non-subscribed users
+	if !IsSubscribed() {
+		emailOSFooter := "\n\nSent with EmailOS https://email-os.com/"
+		emailOSFooterHTML := "<br><br>Sent with <a href=\"https://email-os.com/\">EmailOS</a>"
+		
+		body += emailOSFooter
+		if bodyHTML != "" {
+			bodyHTML += emailOSFooterHTML
+		} else {
+			bodyHTML = strings.ReplaceAll(body, "\n", "<br>")
+		}
+	} else if bodyHTML == "" {
+		bodyHTML = strings.ReplaceAll(body, "\n", "<br>")
+	}
+	
+	// Apply template with profile image if it exists and UseTemplate is true
+	if msg.UseTemplate && (config.ProfileImage != "" || TemplateExists()) {
 		bodyHTML = ApplyTemplateWithProfile(body, bodyHTML, config.ProfileImage)
-	} else if TemplateExists() && bodyHTML != "" {
+	} else if msg.UseTemplate && TemplateExists() && bodyHTML != "" {
 		bodyHTML = ApplyTemplate(body, bodyHTML)
 	}
 
@@ -529,4 +561,9 @@ func sendWithSMTPS(host string, port int, auth smtp.Auth, from string, to []stri
 	}
 
 	return c.Quit()
+}
+// MarkdownToHTMLContent converts markdown text to HTML content (without full document wrapper)
+func MarkdownToHTMLContent(markdown string) string {
+	html := blackfriday.Run([]byte(markdown))
+	return string(html)
 }

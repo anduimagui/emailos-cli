@@ -695,7 +695,7 @@ Use --local flag to create/modify project-specific configuration (.email/)`,
 var templateCmd = &cobra.Command{
 	Use:   "template",
 	Short: "Customize HTML email template",
-	Long: `Customize your HTML email template using the EmailOS Template Editor.
+	Long: `Customize your HTML email template.
 The template will be saved and used for all future emails.`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		return mailos.EnsureInitialized()
@@ -929,6 +929,7 @@ var sendCmd = &cobra.Command{
 		signature, _ := cmd.Flags().GetString("signature")
 		from, _ := cmd.Flags().GetString("from")
 		preview, _ := cmd.Flags().GetBool("preview")
+		useTemplate, _ := cmd.Flags().GetBool("template")
 
 		if len(to) == 0 {
 			return fmt.Errorf("at least one recipient is required")
@@ -995,6 +996,7 @@ var sendCmd = &cobra.Command{
 			Subject:     subject,
 			Body:        body,
 			Attachments: attachments,
+			UseTemplate: useTemplate,
 		}
 
 		// Add signature if needed
@@ -1005,8 +1007,7 @@ var sendCmd = &cobra.Command{
 
 		// Convert markdown to HTML unless plain text requested
 		if !plain {
-			// html := utils.MarkdownToHTML(body) - function not available
-			html := body // fallback to plain text
+			html := mailos.MarkdownToHTMLContent(body)
 			if html != body {
 				msg.BodyHTML = html
 			}
@@ -1635,6 +1636,55 @@ Examples:
 		}
 
 		return mailos.ReplyCommand(opts)
+	},
+}
+
+var forwardCmd = &cobra.Command{
+	Use:   "forward [email_number]",
+	Short: "Forward a specific email",
+	Long: `Forward a specific email to one or more recipients.
+The email_number corresponds to the number shown in the email list (mailos search).
+
+Examples:
+  mailos forward 2 --to user@example.com         # Forward email #2 to specific recipient
+  mailos forward 2 --to user1@example.com,user2@example.com  # Forward to multiple recipients
+  mailos forward 2 --body "FYI"                  # Forward with additional message
+  mailos forward 2 --draft                       # Save forward as draft instead of sending`,
+	Args:  cobra.ExactArgs(1),
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return mailos.EnsureInitialized()
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Parse email number
+		emailNumber, err := strconv.Atoi(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid email number: %s", args[0])
+		}
+
+		// Get flags
+		body, _ := cmd.Flags().GetString("body")
+		subject, _ := cmd.Flags().GetString("subject")
+		fileBody, _ := cmd.Flags().GetString("file")
+		draft, _ := cmd.Flags().GetBool("draft")
+		interactive, _ := cmd.Flags().GetBool("interactive")
+		to, _ := cmd.Flags().GetStringSlice("to")
+		cc, _ := cmd.Flags().GetStringSlice("cc")
+		bcc, _ := cmd.Flags().GetStringSlice("bcc")
+
+		// Build forward options
+		opts := mailos.ForwardOptions{
+			EmailNumber: emailNumber,
+			Body:        body,
+			Subject:     subject,
+			FileBody:    fileBody,
+			Draft:       draft,
+			Interactive: interactive || (body == "" && fileBody == ""),
+			To:          to,
+			CC:          cc,
+			BCC:         bcc,
+		}
+
+		return mailos.ForwardCommand(opts)
 	},
 }
 
@@ -2642,6 +2692,7 @@ func init() {
 	sendCmd.Flags().String("signature", "", "Custom signature")
 	sendCmd.Flags().String("from", "", "Send from specific email account (account nickname or email)")
 	sendCmd.Flags().Bool("preview", false, "Preview the complete email without sending")
+	sendCmd.Flags().Bool("template", false, "Apply HTML template to email")
 	
 	// Send --drafts specific flags
 	sendCmd.Flags().Bool("drafts", false, "Send all draft emails from .email/drafts folder")
@@ -2712,6 +2763,16 @@ func init() {
 	replyCmd.Flags().StringSlice("to", nil, "Override recipients")
 	replyCmd.Flags().StringSlice("cc", nil, "CC recipients")
 	replyCmd.Flags().StringSlice("bcc", nil, "BCC recipients")
+
+	// Forward command flags
+	forwardCmd.Flags().String("body", "", "Forward body text")
+	forwardCmd.Flags().String("subject", "", "Override forward subject")
+	forwardCmd.Flags().StringP("file", "f", "", "Read body from file")
+	forwardCmd.Flags().Bool("draft", false, "Save as draft instead of sending")
+	forwardCmd.Flags().BoolP("interactive", "i", false, "Force interactive mode")
+	forwardCmd.Flags().StringSlice("to", nil, "Recipients")
+	forwardCmd.Flags().StringSlice("cc", nil, "CC recipients")
+	forwardCmd.Flags().StringSlice("bcc", nil, "BCC recipients")
 
 	// Mark read command flags
 	markReadCmd.Flags().UintSlice("ids", nil, "Email IDs to mark as read")
@@ -2805,6 +2866,7 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(readCmd)
 	rootCmd.AddCommand(replyCmd)
+	rootCmd.AddCommand(forwardCmd)
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(reportCmd)
