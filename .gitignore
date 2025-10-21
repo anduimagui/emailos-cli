@@ -64,3 +64,18 @@ go.work.sum
 # Temporary files
 tmp/
 temp/
+
+# Cloudflare Wrangler
+.wrangler/
+wrangler.toml.bak
+
+# Installation script worker (keep install-worker.js but ignore temp files)
+/install-test*.sh
+
+# Runtime binaries in cmd directory
+cmd/mailos/emailos
+cmd/mailos/mailos
+cmd/mailos/mailos-test
+
+# Test attachment files (user data)
+cmd/mailos/test-attachments/
