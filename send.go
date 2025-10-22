@@ -177,20 +177,37 @@ func PreviewEmail(msg *EmailMessage, accountEmail string) error {
 	return nil
 }
 
+// SendWithAccountVerbose sends an email using a specific account with optional verbose logging
+func SendWithAccountVerbose(msg *EmailMessage, accountEmail string, verbose bool) error {
+	return sendWithAccount(msg, accountEmail, verbose)
+}
+
 // SendWithAccount sends an email using a specific account
 func SendWithAccount(msg *EmailMessage, accountEmail string) error {
+	return sendWithAccount(msg, accountEmail, false)
+}
+
+// sendWithAccount is the internal implementation
+func sendWithAccount(msg *EmailMessage, accountEmail string, verbose bool) error {
 	// For now, we'll skip attachment support in the simple implementation
 	if len(msg.Attachments) > 0 {
 		return fmt.Errorf("attachment support not yet implemented")
 	}
 
 	// Initialize mail setup with optional account
+	if verbose {
+		fmt.Printf("Debug: Initializing mail setup for account: %s\n", accountEmail)
+	}
 	setup, err := InitializeMailSetup(accountEmail)
 	if err != nil {
 		return fmt.Errorf("failed to initialize mail setup: %v", err)
 	}
 	
 	config := setup.Config
+	if verbose {
+		fmt.Printf("Debug: Using SMTP account: %s\n", config.Email)
+		fmt.Printf("Debug: Sending from: %s\n", config.FromEmail)
+	}
 
 	// Prepare email headers and body
 	// Use FromEmail if specified, otherwise use the account email
@@ -311,6 +328,14 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 		return fmt.Errorf("failed to get SMTP settings: %v", err)
 	}
 
+	if verbose {
+		fmt.Printf("Debug: SMTP Host: %s:%d\n", smtpHost, smtpPort)
+		fmt.Printf("Debug: TLS: %v, SSL: %v\n", useTLS, useSSL)
+		fmt.Printf("Debug: SMTP Auth User: %s\n", config.Email)
+		fmt.Printf("Debug: From Email in message: %s\n", fromEmail)
+		fmt.Printf("Debug: Recipients: %v\n", allRecipients)
+	}
+
 	// Send email
 	auth := smtp.PlainAuth("", config.Email, config.Password, smtpHost)
 
@@ -325,7 +350,7 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 			message.String(),
 		)
 		if err != nil {
-			return err
+			return handleSendError(err, fromEmail, config.Email)
 		}
 		// After successfully sending, save to Sent folder
 		return saveToSentFolder(message.String(), config, msg, from)
@@ -340,7 +365,7 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 			message.String(),
 		)
 		if err != nil {
-			return err
+			return handleSendError(err, fromEmail, config.Email)
 		}
 		// After successfully sending, save to Sent folder
 		return saveToSentFolder(message.String(), config, msg, from)
@@ -350,7 +375,7 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 	addr := fmt.Sprintf("%s:%d", smtpHost, smtpPort)
 	err = smtp.SendMail(addr, auth, fromEmail, allRecipients, []byte(message.String()))
 	if err != nil {
-		return err
+		return handleSendError(err, fromEmail, config.Email)
 	}
 	
 	// After successfully sending, save to Sent folder
@@ -562,6 +587,37 @@ func sendWithSMTPS(host string, port int, auth smtp.Auth, from string, to []stri
 
 	return c.Quit()
 }
+
+// handleSendError provides specific error handling for email sending failures
+func handleSendError(err error, fromEmail, configEmail string) error {
+	errStr := err.Error()
+	
+	// Check for common alias/authentication errors
+	if strings.Contains(errStr, "authentication failed") || 
+	   strings.Contains(errStr, "invalid credentials") ||
+	   strings.Contains(errStr, "535") {
+		
+		if fromEmail != configEmail {
+			return fmt.Errorf("authentication failed when sending from %s. This may be because:\n"+
+				"1. The alias '%s' is not configured in your email provider\n"+
+				"2. Your email provider doesn't allow sending from this alias\n"+
+				"3. You need to add '%s' as an authorized sending address\n\n"+
+				"For Fastmail: Go to Settings > Identities and add '%s' as a new identity\n"+
+				"Original error: %v", fromEmail, fromEmail, fromEmail, fromEmail, err)
+		}
+	}
+	
+	// Check for "from address not allowed" type errors
+	if strings.Contains(errStr, "from address") || 
+	   strings.Contains(errStr, "sender") ||
+	   strings.Contains(errStr, "not allowed") {
+		return fmt.Errorf("sending from '%s' is not allowed. Please configure this email as an alias in your email provider settings. Original error: %v", fromEmail, err)
+	}
+	
+	// Return original error if no specific handling applies
+	return err
+}
+
 // MarkdownToHTMLContent converts markdown text to HTML content (without full document wrapper)
 func MarkdownToHTMLContent(markdown string) string {
 	html := blackfriday.Run([]byte(markdown))

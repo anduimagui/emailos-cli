@@ -105,7 +105,6 @@ const (
 // UI Mode environment variables
 const (
 	EnvUseBubbleTea     = "MAILOS_USE_BUBBLETEA"
-	EnvUseInk           = "MAILOS_USE_INK"
 	EnvSuggestionMode   = "MAILOS_SUGGESTION_MODE"
 	EnvShowLogo         = "MAILOS_SHOW_LOGO"
 	EnvNoLogo           = "MAILOS_NO_LOGO"

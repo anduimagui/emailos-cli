@@ -43,7 +43,7 @@ Automatic testing of:
 - Custom sender address
 - AI provider selection (claude-code, openai, gemini, etc.)
 - Profile image (used in email templates with {{PROFILE_IMAGE}})
-- Interactive mode preference (Classic or React Ink UI)
+- Interactive mode preference
 
 ### Step 6: Confirmation
 - Review settings
@@ -172,7 +172,6 @@ Setup creates:
 ├── README.md           # Documentation
 ├── template.html       # Email template (optional)
 ├── .slash_config.json  # Slash command preferences
-├── ui/                 # React Ink UI components (auto-installed)
 └── cache/              # Email cache (created on use)
 ```
 
@@ -321,7 +320,6 @@ mailos send --plain --file message.txt  # Send plain text from file
 
 # Interactive mode
 mailos interactive      # Classic UI
-mailos interactive --ink  # React Ink UI
 mailos chat            # AI chat interface
 
 # View email statistics

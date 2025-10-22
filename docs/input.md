@@ -181,11 +181,6 @@ export MAILOS_SUGGESTION_MODE=simple   # Basic implementation
 export MAILOS_SUGGESTION_MODE=live     # Hybrid approach
 ```
 
-#### MAILOS_USE_INK
-Enable React Ink UI (experimental):
-```bash
-export MAILOS_USE_INK=true
-```
 
 ### Settings File
 The input system respects configurations in:

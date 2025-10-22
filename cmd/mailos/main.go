@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	mailos "github.com/anduimagui/emailos"
@@ -472,10 +474,10 @@ func formatEmailAsMarkdown(email *mailos.Email) string {
 func getAllCommands() []string {
 	commands := []string{
 		"setup", "local", "provider", "configure", "config", "template",
-		"draft", "drafts", "send", "sync", "sync-db", "sent", "download", "read", "reply",
+		"draft", "drafts", "send", "sync", "sync-db", "sent", "download", "read", "reply", "forward",
 		"mark-read", "accounts", "info", "test", "delete", "report",
-		"open", "stats", "docs", "interactive", "chat", "search",
-		"unsubscribe",
+		"open", "stats", "docs", "commands", "tools", "interactive", "chat", "search",
+		"unsubscribe", "uninstall", "cleanup",
 	}
 	sort.Strings(commands)
 	return commands
@@ -569,6 +571,123 @@ func printCommandGroup(category string, commands []string) {
 	}
 }
 
+// showAllCommands displays all available commands organized by category
+func showAllCommands(verbose bool) error {
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("               MAILOS COMMANDS REFERENCE\n")
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	
+	// Core Commands
+	fmt.Printf("🏠 CORE COMMANDS:\n")
+	fmt.Printf("  setup      - Initial email configuration\n")
+	fmt.Printf("  configure  - Manage email configuration (aliases: config)\n")
+	fmt.Printf("  info       - Show current configuration status\n")
+	fmt.Printf("  accounts   - Manage multiple email accounts\n")
+	fmt.Printf("  provider   - Select or configure AI provider\n")
+	
+	// Email Management Commands  
+	fmt.Printf("\n📧 EMAIL MANAGEMENT:\n")
+	fmt.Printf("  search     - Search and list emails with advanced filters\n")
+	fmt.Printf("  read       - Display full content of a specific email by ID\n")
+	fmt.Printf("  send       - Send an email\n")
+	fmt.Printf("  reply      - Reply to a specific email\n")
+	fmt.Printf("  forward    - Forward a specific email\n")
+	fmt.Printf("  mark-read  - Mark emails as read\n")
+	fmt.Printf("  delete     - Delete emails\n")
+	fmt.Printf("  sent       - Read sent emails\n")
+	fmt.Printf("  download   - Download email attachments\n")
+	
+	// Draft Management
+	fmt.Printf("\n📝 DRAFT MANAGEMENT:\n")
+	fmt.Printf("  draft      - Simplified draft management (list, edit, create)\n")
+	fmt.Printf("  drafts     - Legacy draft command with advanced features\n")
+	
+	// Data & Analytics
+	fmt.Printf("\n📊 DATA & ANALYTICS:\n")
+	fmt.Printf("  stats      - Show email statistics and analytics\n")
+	fmt.Printf("  report     - Generate email reports for time ranges\n")
+	fmt.Printf("  sync       - Sync emails from IMAP to local filesystem\n")
+	fmt.Printf("  sync-db    - Sync emails to local SQLite database\n")
+	
+	// Automation & Tools
+	fmt.Printf("\n🔧 AUTOMATION & TOOLS:\n")
+	fmt.Printf("  template   - Customize HTML email template\n")
+	fmt.Printf("  open       - Open email in default mail application\n")
+	fmt.Printf("  unsubscribe- Find and open unsubscribe links\n")
+	fmt.Printf("  test       - Test email functionality\n")
+	fmt.Printf("  tools      - List all Go methods/functions in codebase\n")
+	
+	// Interactive & AI
+	fmt.Printf("\n🤖 INTERACTIVE & AI:\n")
+	fmt.Printf("  interactive- Launch interactive mode\n")
+	fmt.Printf("  chat       - Launch AI chat interface\n")
+	
+	// System Management
+	fmt.Printf("\n⚙️  SYSTEM MANAGEMENT:\n")
+	fmt.Printf("  local      - Create local project configuration\n")
+	fmt.Printf("  docs       - Generate AI instruction documentation\n")
+	fmt.Printf("  commands   - Show this command reference\n")
+	fmt.Printf("  uninstall  - Completely remove EmailOS\n")
+	fmt.Printf("  cleanup    - Clean up orphaned data\n")
+	
+	if verbose {
+		fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+		fmt.Printf("               COMMONLY USED FLAG PATTERNS\n")
+		fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+		
+		fmt.Printf("🔍 SEARCH FLAGS:\n")
+		fmt.Printf("  --number, -n       Limit number of results\n")
+		fmt.Printf("  --unread, -u       Show only unread emails\n")
+		fmt.Printf("  --from             Filter by sender\n")
+		fmt.Printf("  --to               Filter by recipient\n")
+		fmt.Printf("  --subject          Filter by subject\n")
+		fmt.Printf("  --days             Last N days\n")
+		fmt.Printf("  --query, -q        Complex search query\n")
+		fmt.Printf("  --has-attachments  Emails with attachments\n")
+		fmt.Printf("  --case-sensitive   Case sensitive search\n")
+		
+		fmt.Printf("\n📤 SEND FLAGS:\n")
+		fmt.Printf("  --to, -t           Recipient addresses\n")
+		fmt.Printf("  --cc, -c           CC recipients\n")
+		fmt.Printf("  --bcc, -B          BCC recipients\n")
+		fmt.Printf("  --subject, -s      Email subject\n")
+		fmt.Printf("  --body, -b         Email body\n")
+		fmt.Printf("  --file, -f         Read body from file\n")
+		fmt.Printf("  --attach, -a       Attachments\n")
+		fmt.Printf("  --from             Send from specific account\n")
+		fmt.Printf("  --plain, -P        Send as plain text\n")
+		fmt.Printf("  --no-signature, -S Don't add signature\n")
+		
+		fmt.Printf("\n🗂️  OUTPUT FLAGS:\n")
+		fmt.Printf("  --json             Output as JSON\n")
+		fmt.Printf("  --save-markdown    Save as markdown files\n")
+		fmt.Printf("  --output-dir       Output directory\n")
+		fmt.Printf("  --download-attachments Download attachments\n")
+		fmt.Printf("  --attachment-dir   Attachment directory\n")
+		
+		fmt.Printf("\n⏰ TIME FLAGS:\n")
+		fmt.Printf("  --days             Last N days\n")
+		fmt.Printf("  --range            Time range (Today, Yesterday, This week, etc.)\n")
+		fmt.Printf("  --date-range       Custom date range (YYYY-MM-DD,YYYY-MM-DD)\n")
+		fmt.Printf("  --before           Before date (YYYY-MM-DD)\n")
+		fmt.Printf("  --after            After date (YYYY-MM-DD)\n")
+	}
+	
+	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("📚 USAGE EXAMPLES:\n")
+	fmt.Printf("  mailos search --unread --days 7          # Unread emails last 7 days\n")
+	fmt.Printf("  mailos read 1234                         # Read email ID 1234\n")
+	fmt.Printf("  mailos send --to user@example.com --subject \"Hi\" --body \"Hello\"\n")
+	fmt.Printf("  mailos stats --from gmail.com --days 30  # Gmail stats last 30 days\n")
+	fmt.Printf("  mailos accounts --list                   # List all accounts\n")
+	fmt.Printf("  mailos search --query \"meeting\" --has-attachments\n")
+	
+	fmt.Printf("\n💡 FOR HELP: mailos <command> --help\n")
+	fmt.Printf("🚀 GET STARTED: mailos setup\n\n")
+	
+	return nil
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "mailos",
 	Version: Version,
@@ -576,11 +695,6 @@ var rootCmd = &cobra.Command{
 	Long: `EmailOS is a command-line email client that supports multiple providers
 and provides a consistent interface for sending and reading emails.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Check for --ink flag
-		ink, _ := cmd.Flags().GetBool("ink")
-		if ink {
-			os.Setenv("MAILOS_USE_INK", "true")
-		}
 		
 		// Check if this is an unknown command (single argument that's not a query)
 		if len(args) == 1 && !strings.HasPrefix(args[0], "-") {
@@ -607,7 +721,7 @@ and provides a consistent interface for sending and reading emails.`,
 		// If a query was found, handle it
 		if query != "" {
 			// Use interactive handler which will prompt if no provider configured
-			// return // mailos. - temporarily disabledHandleQueryWithProviderSelection(query)
+			// return mailos.HandleQueryWithProviderSelection(query)
 			return fmt.Errorf("CLI functionality temporarily disabled")
 		}
 		
@@ -650,7 +764,7 @@ var providerCmd = &cobra.Command{
 		if err := mailos.EnsureInitialized(); err != nil {
 			return err
 		}
-		// return // mailos. - temporarily disabledSelectAndConfigureAIProvider()
+		// return mailos.SelectAndConfigureAIProvider()
 		return fmt.Errorf("CLI functionality temporarily disabled")
 	},
 }
@@ -674,7 +788,7 @@ Use --local flag to create/modify project-specific configuration (.email/)`,
 		_, _ = cmd.Flags().GetString("ai")
 		
 		if quick {
-			// return // mailos. - temporarily disabledQuickConfigMenu()
+			// return mailos.QuickConfigMenu()
 			return fmt.Errorf("quick config functionality temporarily disabled")
 		}
 		
@@ -930,6 +1044,8 @@ var sendCmd = &cobra.Command{
 		from, _ := cmd.Flags().GetString("from")
 		preview, _ := cmd.Flags().GetBool("preview")
 		useTemplate, _ := cmd.Flags().GetBool("template")
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 		if len(to) == 0 {
 			return fmt.Errorf("at least one recipient is required")
@@ -969,21 +1085,43 @@ var sendCmd = &cobra.Command{
 			if signature != "" {
 				sig = signature
 			} else {
-				cfg, _ := mailos.LoadConfig()
-				// Check for signature override first
-				if cfg.SignatureOverride != "" {
-					sig = cfg.SignatureOverride
-				} else {
-					// Use FromEmail if specified, otherwise use Email
-					emailToShow := cfg.Email
-					if cfg.FromEmail != "" {
-						emailToShow = cfg.FromEmail
+				// Get account-specific config instead of global config
+				setup, err := mailos.InitializeMailSetup(from)
+				if err == nil {
+					cfg := setup.Config
+					if verbose {
+						fmt.Printf("Debug: SignatureOverride = '%s'\n", cfg.SignatureOverride)
 					}
-					name := cfg.FromName
-					if name == "" {
-						name = strings.Split(emailToShow, "@")[0]
+					// For wildcard aliases, don't include signature unless explicitly set
+					if verbose {
+						fmt.Printf("Debug: cfg.FromEmail = '%s', cfg.Email = '%s'\n", cfg.FromEmail, cfg.Email)
 					}
-					sig = fmt.Sprintf("\n--\n%s\n%s", name, emailToShow)
+					if cfg.FromEmail != cfg.Email {
+						// This is a wildcard alias - no automatic signature
+						if verbose {
+							fmt.Printf("Debug: Wildcard alias detected - no signature\n")
+						}
+						sig = ""
+					} else {
+						// Check for signature override for non-wildcard accounts
+						if cfg.SignatureOverride != "" {
+							if verbose {
+								fmt.Printf("Debug: Using signature override\n")
+							}
+							sig = cfg.SignatureOverride
+						} else {
+							// Use FromEmail if specified, otherwise use Email
+							emailToShow := cfg.Email
+							if cfg.FromEmail != "" {
+								emailToShow = cfg.FromEmail
+							}
+							name := cfg.FromName
+							if name == "" {
+								name = strings.Split(emailToShow, "@")[0]
+							}
+							sig = fmt.Sprintf("\n--\n%s\n%s", name, emailToShow)
+						}
+					}
 				}
 			}
 		}
@@ -1017,8 +1155,34 @@ var sendCmd = &cobra.Command{
 			return mailos.PreviewEmail(msg, from)
 		}
 
+		if dryRun {
+			fmt.Printf("=== DRY RUN - Email Preview ===\n")
+			fmt.Printf("From: %s\n", from)
+			fmt.Printf("To: %s\n", strings.Join(to, ", "))
+			if len(cc) > 0 {
+				fmt.Printf("CC: %s\n", strings.Join(cc, ", "))
+			}
+			if len(bcc) > 0 {
+				fmt.Printf("BCC: %s\n", strings.Join(bcc, ", "))
+			}
+			fmt.Printf("Subject: %s\n", subject)
+			fmt.Printf("\n--- Body ---\n%s", body)
+			if sig != "" {
+				fmt.Printf("%s", sig)
+			}
+			fmt.Printf("\n--- End Body ---\n")
+			fmt.Printf("\n=== End Preview (email not sent) ===\n")
+			return nil
+		}
+
 		fmt.Printf("Sending email to %s...\n", strings.Join(to, ", "))
-		if err := mailos.SendWithAccount(msg, from); err != nil {
+		
+		if verbose {
+			fmt.Printf("Debug: From address: %s\n", from)
+			fmt.Printf("Debug: Account lookup starting for: %s\n", from)
+		}
+		
+		if err := mailos.SendWithAccountVerbose(msg, from, verbose); err != nil {
 			return fmt.Errorf("failed to send email: %v", err)
 		}
 
@@ -1107,7 +1271,7 @@ var sentCmd = &cobra.Command{
 		saveMarkdown, _ := cmd.Flags().GetBool("save-markdown")
 		outputDir, _ := cmd.Flags().GetString("output-dir")
 
-		opts := mailos.ReadOptions{
+		opts := mailos.SentOptions{
 			Limit:     limit,
 			ToAddress: to,
 			Subject:   subject,
@@ -1126,7 +1290,7 @@ var sentCmd = &cobra.Command{
 		}
 
 		fmt.Println("Reading sent emails...")
-		emails, err := mailos.ReadFromFolder(opts, "Sent")
+		emails, err := mailos.ReadSentEmails(opts)
 		if err != nil {
 			return fmt.Errorf("failed to read sent emails: %v", err)
 		}
@@ -1158,12 +1322,6 @@ var sentCmd = &cobra.Command{
 				fmt.Printf("Warning: failed to get sent directory: %v\n", err)
 				sentDir = outputDir // fallback to the specified output dir
 			}
-			
-			// client, err := NewClient()
-			// if err != nil {
-			//	return err
-			// }
-			return fmt.Errorf("client functionality temporarily disabled")
 			
 			// SaveEmailsAsMarkdown will print the save message
 			if err := mailos.SaveEmailsAsMarkdown(emails, sentDir); err != nil {
@@ -1200,8 +1358,8 @@ var sentCmd = &cobra.Command{
 			data, _ := json.MarshalIndent(jsonEmails, "", "  ")
 			fmt.Println(string(data))
 		} else {
-			// Use the new mailos.FormatEmailList function for sent emails
-			fmt.Print(mailos.FormatEmailList(emails))
+			// Use the dedicated FormatSentEmailList function for sent emails
+			fmt.Print(mailos.FormatSentEmailList(emails))
 		}
 		
 		return nil
@@ -1502,9 +1660,9 @@ func parseDocumentContent(filename string, data []byte) (string, error) {
 }
 
 var readCmd = &cobra.Command{
-	Use:   "read",
+	Use:   "read [email_id]",
 	Short: "Display full content of a specific email",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		return mailos.EnsureInitialized()
 	},
@@ -1515,6 +1673,9 @@ var readCmd = &cobra.Command{
 		// Get include-documents flag
 		includeDocuments, _ := cmd.Flags().GetBool("include-documents")
 		
+		// Get id flag
+		idFlag, _ := cmd.Flags().GetUint32("id")
+		
 		// Ensure authenticated before proceeding
 		cfg, err := mailos.EnsureAuthenticated(accountEmail)
 		if err != nil {
@@ -1522,11 +1683,23 @@ var readCmd = &cobra.Command{
 		}
 		_ = cfg // Config is now validated and has credentials
 		
-		// Parse email ID
-		emailID := args[0]
-		id, err := strconv.ParseUint(emailID, 10, 32)
-		if err != nil {
-			return fmt.Errorf("READ_INVALID_ID: Email ID '%s' is not a valid number. Email IDs must be positive integers (e.g., 1332, 1331). Use 'mailos search' to see available email IDs. Parsing error: %v", emailID, err)
+		// Determine email ID from either positional argument or flag
+		var emailID string
+		var id uint64
+		
+		if idFlag > 0 {
+			// Use flag value
+			id = uint64(idFlag)
+		} else if len(args) > 0 {
+			// Use positional argument
+			emailID = args[0]
+			var parseErr error
+			id, parseErr = strconv.ParseUint(emailID, 10, 32)
+			if parseErr != nil {
+				return fmt.Errorf("READ_INVALID_ID: Email ID '%s' is not a valid number. Email IDs must be positive integers (e.g., 1332, 1331). Use 'mailos search' to see available email IDs. Parsing error: %v", emailID, parseErr)
+			}
+		} else {
+			return fmt.Errorf("READ_MISSING_ID: Please provide an email ID either as a positional argument (mailos read 1423) or using the --id flag (mailos read --id 1423). Use 'mailos search' to see available email IDs.")
 		}
 		
 		// client, err := NewClient()
@@ -1764,15 +1937,49 @@ var accountsCmd = &cobra.Command{
 Examples:
   mailos accounts --list                                    # List available accounts
   mailos accounts --add user@example.com                   # Add a new email account
+  mailos accounts --add user@example.com --provider fastmail # Add account with specific provider
+  mailos accounts --add alias@domain.com --provider fastmail --use-existing-credentials # Add alias using existing credentials
+  mailos accounts --sync-fastmail                          # Sync aliases from FastMail via JMAP API
+  mailos accounts --sync-fastmail --token YOUR_TOKEN       # Sync with specific API token
   mailos accounts --set user@example.com                   # Set default account for this session
   mailos accounts --set-signature user@example.com:"Best regards, John"  # Set account signature
   mailos accounts --clear                                   # Clear session default`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		setAccount, _ := cmd.Flags().GetString("set")
 		addAccount, _ := cmd.Flags().GetString("add")
+		provider, _ := cmd.Flags().GetString("provider")
+		useExistingCredentials, _ := cmd.Flags().GetBool("use-existing-credentials")
 		setSignature, _ := cmd.Flags().GetString("set-signature")
 		clearSession, _ := cmd.Flags().GetBool("clear")
 		listAccounts, _ := cmd.Flags().GetBool("list")
+		syncFastmail, _ := cmd.Flags().GetBool("sync-fastmail")
+		token, _ := cmd.Flags().GetString("token")
+		testConnection, _ := cmd.Flags().GetBool("test-connection")
+		
+		// Handle FastMail sync
+		if syncFastmail {
+			if token == "" {
+				fmt.Println("To sync aliases from FastMail, you need a JMAP API token.")
+				fmt.Println("1. Go to FastMail Settings → Password & Security → API tokens")
+				fmt.Println("2. Create a new token with 'Identity' and 'Email Submission' scopes")
+				fmt.Print("Enter your FastMail JMAP token: ")
+				fmt.Scanln(&token)
+				if token == "" {
+					return fmt.Errorf("token is required for FastMail sync")
+				}
+			}
+			
+			if testConnection {
+				return mailos.TestFastMailJMAPConnection(token)
+			}
+			
+			return mailos.SyncFastMailAliases(token)
+		}
+		
+		// Handle test connection
+		if testConnection && token != "" {
+			return mailos.TestFastMailJMAPConnection(token)
+		}
 		
 		// Handle set signature
 		if setSignature != "" {
@@ -1791,7 +1998,7 @@ Examples:
 		
 		// Handle add account
 		if addAccount != "" {
-			if err := mailos.AddNewAccount(addAccount); err != nil {
+			if err := mailos.AddNewAccountWithProvider(addAccount, provider, useExistingCredentials); err != nil {
 				return fmt.Errorf("failed to add account: %v", err)
 			}
 			fmt.Printf("✓ Successfully added account: %s\n", addAccount)
@@ -2489,6 +2696,17 @@ This reads from the docs/ directory and creates a comprehensive instruction file
 	},
 }
 
+var commandsCmd = &cobra.Command{
+	Use:   "commands",
+	Short: "List all available mailos commands and their descriptions",
+	Long:  `Display a comprehensive list of all available mailos commands organized by category.
+This command is especially useful for LLMs and users who want to discover all available functionality.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		return showAllCommands(verbose)
+	},
+}
+
 var toolsCmd = &cobra.Command{
 	Use:   "tools",
 	Short: "List all available methods and functions across the codebase",
@@ -2499,6 +2717,59 @@ This command helps LLMs and developers understand the complete API surface area.
 	},
 }
 
+var uninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "Completely uninstall EmailOS and remove all data",
+	Long: `Completely removes EmailOS from your system including:
+- Configuration files (~/.email/config.json)
+- All synced email data (~/.email/sent, ~/.email/received, ~/.email/drafts)
+- Local project configurations (.email/ directories)
+
+This action cannot be undone. A backup can be created before removal.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		force, _ := cmd.Flags().GetBool("force")
+		keepEmails, _ := cmd.Flags().GetBool("keep-emails")
+		keepConfig, _ := cmd.Flags().GetBool("keep-config")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		quiet, _ := cmd.Flags().GetBool("quiet")
+		createBackup, _ := cmd.Flags().GetBool("backup")
+		backupPath, _ := cmd.Flags().GetString("backup-path")
+
+		opts := mailos.CleanupOptions{
+			Force:        force,
+			KeepEmails:   keepEmails,
+			KeepConfig:   keepConfig,
+			RemoveAll:    !keepEmails && !keepConfig,
+			DryRun:       dryRun,
+			Quiet:        quiet,
+			CreateBackup: createBackup,
+			BackupPath:   backupPath,
+		}
+
+		return mailos.UninstallCommand(opts)
+	},
+}
+
+var cleanupCmd = &cobra.Command{
+	Use:   "cleanup",
+	Short: "Clean up orphaned EmailOS data",
+	Long: `Detects and removes orphaned EmailOS configuration and data files.
+Useful when EmailOS was uninstalled by a package manager but data remains.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		detector := mailos.NewCleanupDetector()
+		
+		if detector.CheckForOrphanedData() {
+			return detector.PromptOrphanedCleanup()
+		}
+		
+		quiet, _ := cmd.Flags().GetBool("quiet")
+		if !quiet {
+			fmt.Println("✓ No orphaned EmailOS data found.")
+		}
+		return nil
+	},
+}
+
 var interactiveCmd = &cobra.Command{
 	Use:   "interactive",
 	Short: "Launch interactive mode",
@@ -2506,10 +2777,6 @@ var interactiveCmd = &cobra.Command{
 		return mailos.EnsureInitialized()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ink, _ := cmd.Flags().GetBool("ink")
-		if ink {
-			os.Setenv("MAILOS_USE_INK", "true")
-		}
 		return mailos.InteractiveModeWithMenu()
 	},
 }
@@ -2517,14 +2784,12 @@ var interactiveCmd = &cobra.Command{
 var chatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Launch AI chat interface",
-	Long:  `Launch the AI chat interface for natural language email interactions.
-This uses the React Ink UI to provide a modern chat experience.`,
+	Long:  `Launch the AI chat interface for natural language email interactions.`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		return mailos.EnsureInitialized()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Chat command always uses the React Ink UI for better chat experience
-		os.Setenv("MAILOS_USE_INK", "true")
+		// return mailos.LaunchAIChatInterface()
 		return mailos.InteractiveModeWithMenu()
 	},
 }
@@ -2615,7 +2880,6 @@ func init() {
 	rootCmd.Args = cobra.ArbitraryArgs
 	
 	// Root command flags
-	rootCmd.Flags().Bool("ink", false, "Use the React Ink UI (experimental)")
 	
 	// Setup help functions for commands with documentation
 	setupHelpForCommand(setupCmd, "setup")
@@ -2637,9 +2901,14 @@ func init() {
 	// Accounts command flags
 	accountsCmd.Flags().String("set", "", "Set session default account")
 	accountsCmd.Flags().String("add", "", "Add a new email account")
+	accountsCmd.Flags().String("provider", "", "Email provider for new account (gmail, fastmail, outlook, yahoo, zoho)")
+	accountsCmd.Flags().Bool("use-existing-credentials", false, "Use existing credentials from same provider (useful for aliases)")
 	accountsCmd.Flags().String("set-signature", "", "Set signature for an account (format: email:signature)")
 	accountsCmd.Flags().Bool("clear", false, "Clear session default account")
 	accountsCmd.Flags().Bool("list", false, "List available accounts")
+	accountsCmd.Flags().Bool("sync-fastmail", false, "Sync aliases from FastMail via JMAP API")
+	accountsCmd.Flags().String("token", "", "FastMail JMAP API token for sync operations")
+	accountsCmd.Flags().Bool("test-connection", false, "Test FastMail JMAP API connection")
 	
 	// Stats command flags
 	statsCmd.Flags().IntP("number", "n", 100, "Number of emails to analyze")
@@ -2693,6 +2962,7 @@ func init() {
 	sendCmd.Flags().String("from", "", "Send from specific email account (account nickname or email)")
 	sendCmd.Flags().Bool("preview", false, "Preview the complete email without sending")
 	sendCmd.Flags().Bool("template", false, "Apply HTML template to email")
+	sendCmd.Flags().BoolP("verbose", "v", false, "Show detailed SMTP debugging information")
 	
 	// Send --drafts specific flags
 	sendCmd.Flags().Bool("drafts", false, "Send all draft emails from .email/drafts folder")
@@ -2752,6 +3022,7 @@ func init() {
 
 	// Read command flags (for displaying full email content)
 	readCmd.Flags().Bool("include-documents", true, "Parse and display attachment document content inline")
+	readCmd.Flags().Uint32("id", 0, "Email ID to read (alternative to positional argument)")
 
 	// Reply command flags
 	replyCmd.Flags().Bool("all", false, "Reply to all recipients")
@@ -2824,7 +3095,21 @@ func init() {
 	reportCmd.Flags().String("output", "", "Output file path (optional)")
 	
 	// Interactive command flags
-	interactiveCmd.Flags().Bool("ink", false, "Use the React Ink UI (experimental)")
+	
+	// Uninstall command flags
+	uninstallCmd.Flags().Bool("force", false, "Skip confirmation prompts")
+	uninstallCmd.Flags().Bool("keep-emails", false, "Keep email data, only remove configuration")
+	uninstallCmd.Flags().Bool("keep-config", false, "Keep configuration, only remove email data")
+	uninstallCmd.Flags().Bool("dry-run", false, "Show what would be removed without doing it")
+	uninstallCmd.Flags().Bool("quiet", false, "Minimal output")
+	uninstallCmd.Flags().Bool("backup", false, "Create backup before removal")
+	uninstallCmd.Flags().String("backup-path", "", "Custom backup location")
+	
+	// Cleanup command flags
+	cleanupCmd.Flags().Bool("quiet", false, "Minimal output")
+	
+	// Commands command flags
+	commandsCmd.Flags().Bool("verbose", false, "Show detailed flag information")
 	
 	// Download command flags
 	downloadCmd.Flags().IntP("number", "n", 10, "Number of emails to search")
@@ -2879,14 +3164,23 @@ func init() {
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(docsCmd)
+	rootCmd.AddCommand(commandsCmd)
 	rootCmd.AddCommand(toolsCmd)
+	rootCmd.AddCommand(uninstallCmd)
+	rootCmd.AddCommand(cleanupCmd)
 }
 
 func main() {
+	// Set up signal handling for graceful cleanup detection
+	setupSignalHandling()
+	
+	// Check for orphaned data on startup (for package manager uninstalls)
+	checkOrphanedDataOnStartup()
+	
 	// Check for updates before running the main command
 	// Skip for certain commands that shouldn't trigger updates
 	if len(os.Args) > 1 {
-		skipUpdateCommands := []string{"--version", "-v", "--help", "-h"}
+		skipUpdateCommands := []string{"--version", "-v", "--help", "-h", "uninstall", "cleanup"}
 		shouldSkip := false
 		for _, cmd := range skipUpdateCommands {
 			if os.Args[1] == cmd {
@@ -2903,14 +3197,117 @@ func main() {
 	}
 	
 	
-	// Disable unknown command errors to allow general queries
-	rootCmd.SilenceErrors = true
-	rootCmd.SilenceUsage = true
+	// Setup enhanced error handling with helpful suggestions
+	SetupErrorHandling(rootCmd)
+	
+	// Configure error handling
+	rootCmd.SilenceErrors = false
+	rootCmd.SilenceUsage = false
 	rootCmd.DisableFlagParsing = false
-	rootCmd.FParseErrWhitelist.UnknownFlags = true
+	// Remove the whitelist that was hiding flag errors
+	rootCmd.FParseErrWhitelist.UnknownFlags = false
 	
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+}
+
+// setupSignalHandling sets up handlers for termination signals
+func setupSignalHandling() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	
+	go func() {
+		<-c
+		// On signal, check if this might be an uninstall scenario
+		handleGracefulShutdown()
+		os.Exit(0)
+	}()
+}
+
+// handleGracefulShutdown handles cleanup when process is terminated
+func handleGracefulShutdown() {
+	// This is called when the process receives a termination signal
+	// We can't prompt the user here, but we can leave a cleanup hint
+	detector := mailos.NewCleanupDetector()
+	if detector.CheckForOrphanedData() {
+		// Write a hint file for later cleanup detection
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		
+		hintFile := filepath.Join(homeDir, ".email", ".cleanup_hint")
+		hintContent := fmt.Sprintf("EmailOS was terminated at %s. Run 'mailos cleanup' to remove orphaned data.\n", time.Now().Format(time.RFC3339))
+		os.WriteFile(hintFile, []byte(hintContent), 0644)
+	}
+}
+
+// checkOrphanedDataOnStartup checks for orphaned data when EmailOS starts
+func checkOrphanedDataOnStartup() {
+	// Only check if we're not running uninstall/cleanup commands
+	if len(os.Args) > 1 {
+		cmd := os.Args[1]
+		if cmd == "uninstall" || cmd == "cleanup" {
+			return
+		}
+	}
+	
+	detector := mailos.NewCleanupDetector()
+	
+	// Check for cleanup hint file
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	
+	hintFile := filepath.Join(homeDir, ".email", ".cleanup_hint")
+	if _, err := os.Stat(hintFile); err == nil {
+		// Cleanup hint exists, remove it and show message
+		os.Remove(hintFile)
+		fmt.Println("💡 Tip: Run 'mailos cleanup' to remove any orphaned EmailOS data.")
+		return
+	}
+	
+	// Check for orphaned data (but don't prompt automatically on every startup)
+	// Only show a subtle hint if data has been orphaned for a while
+	if shouldShowOrphanedDataHint() && detector.CheckForOrphanedData() {
+		fmt.Println("💡 Hint: Orphaned EmailOS data detected. Run 'mailos cleanup' to remove it.")
+		updateOrphanedDataHintTime()
+	}
+}
+
+// shouldShowOrphanedDataHint determines if we should show the orphaned data hint
+func shouldShowOrphanedDataHint() bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	
+	hintTimeFile := filepath.Join(homeDir, ".email", ".last_orphan_hint")
+	data, err := os.ReadFile(hintTimeFile)
+	if err != nil {
+		return true // No hint file, show hint
+	}
+	
+	lastHint, err := time.Parse(time.RFC3339, string(data))
+	if err != nil {
+		return true
+	}
+	
+	// Show hint at most once per week
+	return time.Since(lastHint) > 7*24*time.Hour
+}
+
+// updateOrphanedDataHintTime updates the last hint time
+func updateOrphanedDataHintTime() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	
+	hintTimeFile := filepath.Join(homeDir, ".email", ".last_orphan_hint")
+	timeData := time.Now().Format(time.RFC3339)
+	os.WriteFile(hintTimeFile, []byte(timeData), 0644)
 }

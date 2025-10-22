@@ -503,7 +503,7 @@ func LoadAccountConfig(accountEmail string) (*Config, error) {
 	// Get all accounts
 	accounts := GetAllAccounts(globalConfig)
 
-	// Find the requested account
+	// Find the requested account - first try exact match
 	for _, acc := range accounts {
 		if acc.Email == accountEmail {
 			// Create a new config with the selected account
@@ -544,7 +544,64 @@ func LoadAccountConfig(accountEmail string) (*Config, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("account %s not found in configuration", accountEmail)
+	// No exact match found - try domain matching to find authentication account
+	requestedParts := strings.Split(accountEmail, "@")
+	if len(requestedParts) == 2 {
+		requestedDomain := requestedParts[1]
+		
+		// Find any configured account with the same domain for authentication
+		for _, acc := range accounts {
+			accParts := strings.Split(acc.Email, "@")
+			if len(accParts) == 2 && accParts[1] == requestedDomain {
+				// Found a configured account with the same domain - use it for authentication
+				config := &Config{
+					Provider:          acc.Provider,
+					Email:             acc.Email, // Use configured account for SMTP auth
+					Password:          acc.Password,
+					FromName:          acc.FromName,
+					FromEmail:         accountEmail, // Send from the requested email
+					ProfileImage:      acc.ProfileImage,
+					SignatureOverride: acc.Signature,
+					LicenseKey:        globalConfig.LicenseKey,
+					DefaultAICLI:      globalConfig.DefaultAICLI,
+					ActiveAccount:     accountEmail,
+					Accounts:          globalConfig.Accounts,
+				}
+
+				// If account doesn't have all fields, inherit from global config
+				if config.Provider == "" {
+					config.Provider = globalConfig.Provider
+				}
+				if config.Password == "" {
+					config.Password = globalConfig.Password
+				}
+
+				return config, nil
+			}
+		}
+		
+		// If no domain match found, try using the primary account as fallback
+		// This allows any email to be attempted with primary account credentials
+		if globalConfig.Email != "" {
+			config := &Config{
+				Provider:          globalConfig.Provider,
+				Email:             globalConfig.Email, // Use primary account for SMTP auth
+				Password:          globalConfig.Password,
+				FromName:          globalConfig.FromName,
+				FromEmail:         accountEmail, // Send from the requested email
+				ProfileImage:      globalConfig.ProfileImage,
+				SignatureOverride: globalConfig.SignatureOverride,
+				LicenseKey:        globalConfig.LicenseKey,
+				DefaultAICLI:      globalConfig.DefaultAICLI,
+				ActiveAccount:     accountEmail,
+				Accounts:          globalConfig.Accounts,
+			}
+			
+			return config, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no configured accounts available for authentication")
 }
 
 // SwitchAccount switches the active email account for sending
@@ -695,6 +752,130 @@ func AddNewAccount(email string) error {
 		return fmt.Errorf("failed to save account: %v", err)
 	}
 
+	fmt.Printf("✓ Successfully added account: %s\n", email)
+	return nil
+}
+
+// AddNewAccountWithProvider prompts user for account details and adds it to the global config with specified provider
+func AddNewAccountWithProvider(email, provider string, useExistingCredentials bool) error {
+	// Load global config explicitly (not local config)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %v", err)
+	}
+	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+	config, err := loadConfigFromPath(globalConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to load global config: %v", err)
+	}
+
+	// Check if account already exists
+	accounts := GetAllAccounts(config)
+	for _, acc := range accounts {
+		if acc.Email == email {
+			return fmt.Errorf("account %s already exists", email)
+		}
+	}
+
+	fmt.Printf("\nSetting up account: %s\n", email)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	// Use specified provider or guess from email domain
+	if provider == "" {
+		provider = guessProviderFromEmail(email)
+		fmt.Printf("Detected provider: %s\n", provider)
+	} else {
+		// Validate the specified provider
+		switch strings.ToLower(provider) {
+		case "gmail", "google":
+			provider = ProviderGmail
+		case "fastmail":
+			provider = ProviderFastmail
+		case "outlook", "microsoft":
+			provider = ProviderOutlook
+		case "yahoo":
+			provider = ProviderYahoo
+		case "zoho":
+			provider = ProviderZoho
+		default:
+			return fmt.Errorf("unsupported provider: %s. Supported providers: gmail, fastmail, outlook, yahoo, zoho", provider)
+		}
+		fmt.Printf("Using specified provider: %s\n", provider)
+	}
+
+	// Handle credentials based on flag
+	var password string
+	var existingFromName string
+	var existingFromEmail string
+	var existingProfileImage string
+	
+	if useExistingCredentials {
+		// Check if we already have credentials for this provider
+		// Check primary account
+		if config.Provider == provider && config.Password != "" {
+			password = config.Password
+			existingFromName = config.FromName
+			existingFromEmail = config.FromEmail
+			existingProfileImage = config.ProfileImage
+			fmt.Printf("✓ Using existing %s credentials from primary account\n", provider)
+		} else {
+			// Check secondary accounts
+			for _, acc := range config.Accounts {
+				if acc.Provider == provider && acc.Password != "" {
+					password = acc.Password
+					existingFromName = acc.FromName
+					existingFromEmail = acc.FromEmail
+					existingProfileImage = acc.ProfileImage
+					fmt.Printf("✓ Using existing %s credentials from account %s\n", provider, acc.Email)
+					break
+				}
+			}
+		}
+		
+		// If no existing credentials found, fall back to prompting
+		if password == "" {
+			fmt.Printf("No existing %s credentials found. Please provide new credentials.\n", provider)
+		}
+	}
+	
+	// Prompt for credentials if not using existing or no existing found
+	if password == "" {
+		fmt.Printf("For %s, you need an app-specific password.\n", provider)
+		fmt.Print("Enter app password: ")
+		fmt.Scanln(&password)
+		if password == "" {
+			return fmt.Errorf("password is required")
+		}
+	}
+
+	// Create new account config
+	newAccount := AccountConfig{
+		Email:        email,
+		Provider:     provider,
+		Password:     password,
+		FromName:     existingFromName,
+		FromEmail:    existingFromEmail,
+		ProfileImage: existingProfileImage,
+	}
+
+	// Add account to global config explicitly
+	// Check if account already exists
+	for i, acc := range config.Accounts {
+		if acc.Email == newAccount.Email {
+			// Update existing account
+			config.Accounts[i] = newAccount
+			if err := SaveConfigToPath(config, globalConfigPath); err != nil {
+				return fmt.Errorf("failed to save account: %v", err)
+			}
+			return nil
+		}
+	}
+
+	// Add new account
+	config.Accounts = append(config.Accounts, newAccount)
+	if err := SaveConfigToPath(config, globalConfigPath); err != nil {
+		return fmt.Errorf("failed to save account: %v", err)
+	}
 	fmt.Printf("✓ Successfully added account: %s\n", email)
 	return nil
 }

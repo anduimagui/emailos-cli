@@ -6,7 +6,7 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Launch the AI chat interface for natural language email interactions.\nThis uses the React Ink UI to provide a modern chat experience.",
+    "description": "Launch the AI chat interface for natural language email interactions.",
     "inputSchema": {
       "properties": {
         "args": {
@@ -318,12 +318,7 @@
         },
         "flags": {
           "description": "Flag options",
-          "properties": {
-            "ink": {
-              "description": "Use the React Ink UI (experimental)",
-              "type": "boolean"
-            }
-          },
+          "properties": {},
           "type": "object"
         }
       },
@@ -1026,12 +1021,7 @@
         },
         "flags": {
           "description": "Flag options",
-          "properties": {
-            "ink": {
-              "description": "Use the React Ink UI (experimental)",
-              "type": "boolean"
-            }
-          },
+          "properties": {},
           "type": "object"
         }
       },

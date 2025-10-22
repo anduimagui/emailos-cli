@@ -120,25 +120,166 @@ Re-run the installation commands above to get the latest version.
 mailos --version
 ```
 
-## Uninstallation
+## Complete Uninstallation
 
-### npm
+⚠️ **Important**: Standard uninstallation methods only remove the EmailOS binary, but leave your configuration and email data intact in the `~/.email` directory.
+
+### Quick Complete Uninstallation (Recommended)
+
+Use EmailOS's built-in uninstall command for complete removal:
+
+```bash
+# Complete uninstallation with backup
+mailos uninstall --backup
+
+# Force uninstallation without prompts
+mailos uninstall --force
+
+# See what would be removed (dry run)
+mailos uninstall --dry-run
+
+# Keep emails but remove configuration
+mailos uninstall --keep-emails
+
+# Keep configuration but remove emails
+mailos uninstall --keep-config
+```
+
+### Package Manager Uninstallation
+
+#### npm
 ```bash
 npm uninstall -g mailos
 ```
+📝 **Note**: The npm uninstall script will detect your EmailOS data and offer to remove it interactively.
 
-### Homebrew
+#### Homebrew
 ```bash
 brew uninstall mailos
 ```
+⚠️ **Important**: After Homebrew uninstallation, run `mailos cleanup` to remove remaining data.
 
-### Manual Installation
+#### Manual Binary Removal
 ```bash
 # Unix-like systems
 sudo rm /usr/local/bin/mailos
 
 # Windows
 # Remove mailos.exe from wherever you installed it
+```
+⚠️ **Important**: After manual removal, your data remains in `~/.email`. See cleanup instructions below.
+
+### Cleaning Up After Package Manager Uninstallation
+
+If you uninstalled EmailOS using a package manager but want to remove all data:
+
+#### Automatic Cleanup (Recommended)
+```bash
+# If mailos command is still available
+mailos cleanup
+
+# If you get "command not found", manually download and run:
+curl -L https://github.com/anduimagui/emailos-cli/releases/latest/download/mailos-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz | tar xz
+./mailos cleanup
+rm ./mailos
+```
+
+#### Manual Cleanup
+```bash
+# ⚠️ This will permanently delete all EmailOS data!
+# Create backup first (optional):
+cp -r ~/.email ~/Downloads/emailos-backup-$(date +%Y%m%d)
+
+# Remove EmailOS data directory
+rm -rf ~/.email
+
+# Remove any local project configurations
+find ~/projects -name ".email" -type d -exec rm -rf {} + 2>/dev/null
+```
+
+### What Gets Removed
+
+When performing complete uninstallation, the following are removed:
+
+📁 **Configuration Files**:
+- `~/.email/config.json` - Account settings and credentials
+- `~/.email/.license` - License information
+
+📧 **Email Data**:
+- `~/.email/sent/` - All sent email copies
+- `~/.email/received/` - All synced received emails  
+- `~/.email/drafts/` - All draft emails
+
+🗂️ **Local Project Configs**:
+- `.email/` directories in project folders (if any)
+
+🔧 **System Integration**:
+- `EMAILOS.md` files in project directories
+
+### Data Recovery
+
+If you uninstalled EmailOS but want to recover your data:
+
+```bash
+# Check if data still exists
+ls -la ~/.email
+
+# If data exists, reinstall EmailOS to access it
+npm install -g mailos
+
+# Or manually backup the data
+cp -r ~/.email ~/emailos-backup-$(date +%Y%m%d)
+```
+
+### Verification
+
+To verify complete removal:
+
+```bash
+# Check for remaining files
+ls -la ~/.email 2>/dev/null || echo "✓ No EmailOS data found"
+
+# Check for remaining binary
+which mailos 2>/dev/null || echo "✓ No EmailOS binary found"
+
+# Check for local configs (optional)
+find ~ -name ".email" -type d 2>/dev/null
+```
+
+### Troubleshooting Uninstallation
+
+#### "Permission Denied" Errors
+```bash
+# If you get permission errors removing ~/.email
+sudo rm -rf ~/.email
+
+# If you get permission errors removing the binary
+sudo rm $(which mailos)
+```
+
+#### Partial Uninstallation Recovery
+If uninstallation was interrupted:
+
+```bash
+# Reinstall EmailOS temporarily
+npm install -g mailos
+
+# Complete the uninstallation
+mailos uninstall --force
+
+# Remove the binary again
+npm uninstall -g mailos
+```
+
+#### Orphaned Data Detection
+EmailOS automatically detects orphaned data and will show hints when you run other commands. To manually check:
+
+```bash
+# If EmailOS is installed
+mailos cleanup
+
+# If EmailOS is not installed but you suspect data remains
+ls -la ~/.email
 ```
 
 ## System Requirements

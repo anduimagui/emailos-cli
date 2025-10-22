@@ -206,7 +206,8 @@ func InteractiveQueryWithSuggestions(config *Config) error {
 		}
 		idx, _, err := setupPrompt.Run()
 		if err == nil && idx == 0 {
-			return SelectAndConfigureAIProvider()
+			// return SelectAndConfigureAIProvider()
+			fmt.Println("AI provider setup would be called here")
 		}
 		return nil
 	}

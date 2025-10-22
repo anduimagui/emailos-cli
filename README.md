@@ -72,9 +72,8 @@ mailos read --limit 10
 # Interactive mode (classic UI)
 mailos interactive
 
-# Interactive mode with React Ink UI
-mailos interactive --ink
-mailos chat  # Always uses React Ink UI
+# AI chat interface
+mailos chat
 
 # AI-powered email (requires AI setup)
 mailos "send an email to john@example.com thanking him for the meeting"
@@ -103,7 +102,6 @@ mailos send --plain                      # Send as plain text only
 mailos read [--limit N] [--unread]       # Read emails
 mailos read --json                       # Output as JSON
 mailos interactive                       # Interactive TUI mode
-mailos interactive --ink                 # React Ink UI mode
 mailos chat                               # AI chat interface
 mailos setup                              # Configuration wizard
 mailos local                              # Create local config for current directory
@@ -257,7 +255,6 @@ export MAILOS_DEBUG=true
 # Choose UI framework (default: BubbleTea)
 export MAILOS_USE_BUBBLETEA=true
 export MAILOS_USE_OPENTUI=false
-export MAILOS_USE_INK=false
 
 # Hide logo on startup
 export MAILOS_NO_LOGO=true

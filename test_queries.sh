@@ -6,7 +6,7 @@ echo ""
 
 # Build the binary first
 echo "Building mailos..."
-go build -o mailos cmd/mailos/main.go
+go build -o mailos cmd/mailos/main.go cmd/mailos/error_handler.go
 echo ""
 
 echo "Test 1: mailos (no args) - should show landing page"

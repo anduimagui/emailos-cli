@@ -39,8 +39,7 @@ This file provides the main interactive mode orchestration with multiple UI opti
 The interactive mode can use different UI implementations based on environment variables:
 1. **OpenTUI** (experimental) - `InteractiveModeWithOpenTUI()` from `opentui_input.go` when `MAILOS_USE_OPENTUI=true`
 2. **BubbleTea UI** (deprecated) - functionality moved to OLD directory
-3. **React Ink UI** - `InteractiveModeWithReactInk()` when `MAILOS_USE_INK=true`
-4. **Classic UI** - Falls back to suggestion-based modes
+3. **Classic UI** - Falls back to suggestion-based modes
 
 To switch between UI implementations, set the appropriate environment variable:
 ```bash
@@ -49,9 +48,6 @@ export MAILOS_USE_OPENTUI=true
 
 # Use BubbleTea (default, feature-rich)
 export MAILOS_USE_BUBBLETEA=true  # or just don't set anything
-
-# Use React Ink (legacy)
-export MAILOS_USE_INK=true
 
 # Disable BubbleTea to use classic UI
 export MAILOS_USE_BUBBLETEA=false
@@ -117,5 +113,5 @@ The `checkForUpdates()` function (line 29) automatically:
 
 1. **Default launch** (no arguments): Calls `InteractiveModeWithMenu()` at line 425
 2. **Explicit command**: `mailos interactive` calls it at line 1935  
-3. **Chat command**: `mailos chat` sets Ink UI and calls it at line 1950
+3. **Chat command**: `mailos chat` calls it at line 1950
 4. **Query with provider selection**: `HandleQueryWithProviderSelection()` for natural language queries

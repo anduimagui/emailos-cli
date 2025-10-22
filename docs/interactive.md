@@ -8,10 +8,7 @@ The interactive mode provides a rich terminal user interface for managing emails
 # Classic terminal UI (default)
 mailos interactive
 
-# React Ink UI (modern interface)
-mailos interactive --ink
-
-# AI Chat mode (always uses React Ink)
+# AI Chat mode
 mailos chat
 ```
 
@@ -20,11 +17,6 @@ mailos chat
 ### Classic UI
 The default interface with menu-driven navigation and keyboard input.
 
-### React Ink UI
-Modern terminal interface with enhanced visuals and smoother interactions.
-- Activate with `--ink` flag
-- Set environment variable `MAILOS_USE_INK=true` for permanent use
-- Auto-installs components on first use
 
 ## Keyboard Shortcuts
 
@@ -157,11 +149,8 @@ Available templates:
 
 ### Setting Default UI
 ```bash
-# Use React Ink UI by default
-export MAILOS_USE_INK=true
-
-# Or configure in settings
-mailos configure --ui ink
+# Configure in settings
+mailos configure
 ```
 
 ### Customizing Shortcuts
@@ -225,10 +214,6 @@ mailos interactive  # Uses project settings
 - Try different terminal emulator
 - Fallback: use Ctrl+U to clear line
 
-### React Ink UI Issues
-- Clear UI cache: `rm -rf ~/.email/ui`
-- Reinstall: `mailos interactive --ink`
-- Use classic UI: `mailos interactive`
 
 ### Slow Performance
 - Limit email fetch: `/read --limit 20`

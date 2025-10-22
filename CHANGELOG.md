@@ -57,18 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.8] - 2024-01-08
 
 ### Added
-- React Ink UI as default interactive interface
-- Automatic UI installation on first launch
-- Fallback to classic UI if React UI unavailable
-- API server for UI-backend communication
-- Email tagging and filtering in UI
-- Production-ready UI deployment
+- Enhanced interactive interface
+- Improved error handling
+- Email tagging and filtering capabilities
 
 ### Changed
-- Default interactive mode now uses React Ink
-- Classic UI available with MAILOS_CLASSIC_UI=true
-- Improved UI path resolution
-- Better error handling for UI installation
+- Improved interactive mode experience
+- Enhanced UI path resolution
+- Better error handling
 
 ### Fixed
 - UI installation path issues
