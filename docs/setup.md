@@ -296,7 +296,6 @@ chmod 600 ~/.email/config.json
 ### Recommended Next Steps
 1. Test email reading: `mailos read -n 5`
 2. Configure template: `mailos template`
-3. Set up AI provider: `mailos provider`
 4. Create local config: `mailos local`
 
 ### Useful Commands

@@ -8,8 +8,10 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -266,34 +268,8 @@ func editConfiguration(config *Config, configPath string, isGlobal bool) error {
 		config.FromName = newName
 	}
 
-	// Edit AI CLI provider
-	currentAI := GetAICLIName(config.DefaultAICLI)
-	fmt.Printf("AI CLI Provider [%s]: ", currentAI)
-	fmt.Println("\n  Options: claude-code, claude-code-accept, claude-code-yolo, openai-codex, gemini-cli, opencode, none")
-	fmt.Print("  Enter choice: ")
-	newAI, _ := reader.ReadString('\n')
-	newAI = strings.TrimSpace(strings.ToLower(newAI))
-	if newAI != "" {
-		// Validate and set the AI CLI choice
-		switch newAI {
-		case "claude-code", "claude", "claude code":
-			config.DefaultAICLI = "claude-code"
-		case "claude-code-accept", "claude-accept", "claude accept":
-			config.DefaultAICLI = "claude-code-accept"
-		case "claude-code-yolo", "claude yolo", "yolo":
-			config.DefaultAICLI = "claude-code-yolo"
-		case "openai-codex", "openai", "codex":
-			config.DefaultAICLI = "openai-codex"
-		case "gemini-cli", "gemini", "gemini cli":
-			config.DefaultAICLI = "gemini-cli"
-		case "opencode", "open code":
-			config.DefaultAICLI = "opencode"
-		case "none", "manual":
-			config.DefaultAICLI = "none"
-		default:
-			fmt.Printf("  Keeping current: %s\n", currentAI)
-		}
-	}
+	// AI CLI configuration has been moved to setup.go
+	fmt.Printf("AI CLI Provider [%s]: (use 'mailos setup' to change)\n", GetAICLIName(config.DefaultAICLI))
 
 	// Ask if they want to change provider/email
 	fmt.Print("\nDo you want to change the email account? (y/n): ")
@@ -347,26 +323,8 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 			return fmt.Errorf("invalid provider: %s. Valid options: gmail, outlook, yahoo, icloud, proton, fastmail, custom", opts.Provider)
 		}
 	} else {
-		// Interactive provider selection
-		providerKeys := GetProviderKeys()
-		providerNames := make([]string, len(providerKeys))
-		for i, key := range providerKeys {
-			providerNames[i] = Providers[key].Name
-		}
-		
-		prompt := promptui.Select{
-			Label: "Select your email provider",
-			Items: providerNames,
-		}
-		
-		index, _, err := prompt.Run()
-		if err != nil {
-			return fmt.Errorf("provider selection cancelled: %v", err)
-		}
-		
-		selectedKey = providerKeys[index]
-		provider = Providers[selectedKey]
-		fmt.Printf("\nYou selected: %s\n", provider.Name)
+		// Redirect to main setup for interactive configuration
+		return fmt.Errorf("interactive configuration required. Run 'mailos setup' to configure provider, email, and other settings")
 	}
 	
 	// Check if this is a local config setup and warn if different provider than global
@@ -437,21 +395,8 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 		}
 		fmt.Printf("Using email: %s\n", email)
 	} else {
-		// Interactive email input
-		for {
-			fmt.Print("\nEnter your email address: ")
-			emailInput, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read email: %v", err)
-			}
-			email = strings.TrimSpace(emailInput)
-			
-			if !isValidEmail(email) {
-				fmt.Println("This doesn't look right. Please enter a valid email address.")
-				continue
-			}
-			break
-		}
+		// Redirect to main setup for interactive configuration
+		return fmt.Errorf("interactive configuration required. Run 'mailos setup' to configure email address and credentials")
 	}
 	
 	// Handle from email
@@ -532,48 +477,8 @@ func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
 			return fmt.Errorf("invalid AI CLI: %s. Valid options: claude-code, claude-code-yolo, openai, gemini, opencode, none", opts.AICLI)
 		}
 	} else {
-		// Interactive AI CLI selection
-		fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("AI CLI CONFIGURATION")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		
-		aiProviders := []string{
-			"Claude Code",
-			"Claude Code Accept Edits",
-			"Claude Code YOLO Mode (skip permissions)",
-			"OpenAI Codex",
-			"Gemini CLI",
-			"OpenCode",
-			"None (Manual only)",
-		}
-		
-		aiPrompt := promptui.Select{
-			Label: "Select AI CLI provider",
-			Items: aiProviders,
-		}
-		
-		aiIndex, _, err := aiPrompt.Run()
-		if err != nil {
-			// Default to None if selection cancelled
-			aiIndex = 5
-		}
-		
-		switch aiIndex {
-		case 0:
-			defaultAICLI = "claude-code"
-		case 1:
-			defaultAICLI = "claude-code-accept"
-		case 2:
-			defaultAICLI = "claude-code-yolo"
-		case 3:
-			defaultAICLI = "openai-codex"
-		case 4:
-			defaultAICLI = "gemini-cli"
-		case 5:
-			defaultAICLI = "opencode"
-		default:
-			defaultAICLI = "none"
-		}
+		// Redirect to main setup for interactive configuration
+		return fmt.Errorf("interactive configuration required. Run 'mailos setup' to configure AI CLI provider")
 	}
 	
 	// Get app password
@@ -805,63 +710,9 @@ func changeEmailProvider(config *Config, configPath string) error {
 	return Setup()
 }
 
-// changeAICLI allows user to change just the AI CLI setting
+// changeAICLI redirects to setup for AI CLI configuration
 func changeAICLI(config *Config, configPath string) error {
-	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("                   CHANGE AI CLI                      ")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	
-	fmt.Printf("\nCurrent AI CLI: %s\n", GetAICLIName(config.DefaultAICLI))
-	
-	aiProviders := []string{
-		"Claude Code",
-		"Claude Code Accept Edits",
-		"Claude Code YOLO Mode (skip permissions)",
-		"OpenAI Codex",
-		"Gemini CLI", 
-		"OpenCode",
-		"None (Manual only)",
-	}
-	
-	aiPrompt := promptui.Select{
-		Label: "Select new AI CLI provider",
-		Items: aiProviders,
-	}
-	
-	aiIndex, _, err := aiPrompt.Run()
-	if err != nil {
-		fmt.Println("Selection cancelled.")
-		return nil
-	}
-	
-	var newAICLI string
-	switch aiIndex {
-	case 0:
-		newAICLI = "claude-code"
-	case 1:
-		newAICLI = "claude-code-accept"
-	case 2:
-		newAICLI = "claude-code-yolo"
-	case 3:
-		newAICLI = "openai-codex"
-	case 4:
-		newAICLI = "gemini-cli"
-	case 5:
-		newAICLI = "opencode"
-	default:
-		newAICLI = "none"
-	}
-	
-	config.DefaultAICLI = newAICLI
-	
-	if err := SaveConfig(config); err != nil {
-		return fmt.Errorf("failed to save configuration: %v", err)
-	}
-	
-	fmt.Printf("\n✓ AI CLI updated to: %s\n", GetAICLIName(newAICLI))
-	fmt.Println("📧 Configuration saved successfully!")
-	
-	return nil
+	return fmt.Errorf("AI CLI configuration requires interactive setup. Run 'mailos setup' to configure AI CLI provider")
 }
 
 // changeFromAddressLocal allows user to change just the from address for local config
@@ -963,61 +814,7 @@ func changeEmailProviderLocal(config *Config, configPath string) error {
 
 // changeAICLILocal allows user to change just the AI CLI setting for local config
 func changeAICLILocal(config *Config, configPath string) error {
-	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("                 CHANGE AI CLI (LOCAL)                ")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	
-	fmt.Printf("\nCurrent AI CLI: %s\n", GetAICLIName(config.DefaultAICLI))
-	
-	aiProviders := []string{
-		"Claude Code",
-		"Claude Code Accept Edits",
-		"Claude Code YOLO Mode (skip permissions)",
-		"OpenAI Codex",
-		"Gemini CLI", 
-		"OpenCode",
-		"None (Manual only)",
-	}
-	
-	aiPrompt := promptui.Select{
-		Label: "Select new AI CLI provider",
-		Items: aiProviders,
-	}
-	
-	aiIndex, _, err := aiPrompt.Run()
-	if err != nil {
-		fmt.Println("Selection cancelled.")
-		return nil
-	}
-	
-	var newAICLI string
-	switch aiIndex {
-	case 0:
-		newAICLI = "claude-code"
-	case 1:
-		newAICLI = "claude-code-accept"
-	case 2:
-		newAICLI = "claude-code-yolo"
-	case 3:
-		newAICLI = "openai-codex"
-	case 4:
-		newAICLI = "gemini-cli"
-	case 5:
-		newAICLI = "opencode"
-	default:
-		newAICLI = "none"
-	}
-	
-	config.DefaultAICLI = newAICLI
-	
-	if err := saveLocalConfig(config); err != nil {
-		return fmt.Errorf("failed to save local configuration: %v", err)
-	}
-	
-	fmt.Printf("\n✓ AI CLI updated to: %s\n", GetAICLIName(newAICLI))
-	fmt.Println("📁 Local configuration saved successfully!")
-	
-	return nil
+	return fmt.Errorf("AI CLI configuration requires interactive setup. Run 'mailos setup' to configure AI CLI provider")
 }
 
 // showAdvancedLocalOptions displays the advanced local configuration menu
@@ -1381,4 +1178,32 @@ All email bodies support Markdown formatting:
 
 	// Write to EMAILOS.md in current directory
 	return os.WriteFile("EMAILOS.md", []byte(content), 0644)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func openBrowser(url string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = "open"
+		args = []string{url}
+	case "linux":
+		cmd = "xdg-open"
+		args = []string{url}
+	case "windows":
+		cmd = "cmd"
+		args = []string{"/c", "start", url}
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+
+	return exec.Command(cmd, args...).Start()
 }

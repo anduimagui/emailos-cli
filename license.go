@@ -24,6 +24,9 @@ const (
 
 	// Grace period for expired cache (allows offline usage)
 	LicenseGracePeriod = 7 * 24 * time.Hour
+
+	// Session cache duration (avoids repeated validations in same terminal session)
+	SessionCacheDuration = 1 * time.Hour
 )
 
 type LicenseCache struct {
@@ -36,10 +39,13 @@ type LicenseCache struct {
 }
 
 type LicenseManager struct {
-	mu        sync.RWMutex
-	cache     *LicenseCache
-	cachePath string
-	client    *polargo.Polar
+	mu               sync.RWMutex
+	cache            *LicenseCache
+	cachePath        string
+	client           *polargo.Polar
+	sessionValidated bool
+	sessionStartTime time.Time
+	sessionKey       string
 }
 
 var (
@@ -74,6 +80,12 @@ func getLicenseCachePath() (string, error) {
 
 // ValidateLicense validates a license key with Polar API
 func (lm *LicenseManager) ValidateLicense(key string) error {
+	return lm.validateLicenseInternal(key)
+}
+
+// validateLicenseInternal performs the actual license validation logic
+// This is separated to avoid recursive calls from QuickValidate
+func (lm *LicenseManager) validateLicenseInternal(key string) error {
 	// Check cache first
 	if lm.isValidCached(key) {
 		return nil
@@ -211,15 +223,43 @@ func (lm *LicenseManager) GetCachedLicense() *LicenseCache {
 	return &cacheCopy
 }
 
-// ClearCache removes the cached license
+// ClearCache removes the cached license and resets session
 func (lm *LicenseManager) ClearCache() {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
 	lm.cache = nil
+	lm.sessionValidated = false
+	lm.sessionStartTime = time.Time{}
+	lm.sessionKey = ""
+	
 	if lm.cachePath != "" {
 		os.Remove(lm.cachePath)
 	}
+}
+
+// ClearSessionCache resets only the session-level cache
+// Useful for testing or when switching license keys
+func (lm *LicenseManager) ClearSessionCache() {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	
+	lm.sessionValidated = false
+	lm.sessionStartTime = time.Time{}
+	lm.sessionKey = ""
+}
+
+// GetSessionStatus returns information about the current session cache
+func (lm *LicenseManager) GetSessionStatus() (validated bool, duration time.Duration, key string) {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+	
+	if !lm.sessionValidated {
+		return false, 0, ""
+	}
+	
+	elapsed := time.Since(lm.sessionStartTime)
+	return lm.sessionValidated, elapsed, lm.sessionKey
 }
 
 // IsInGracePeriod checks if we're within the grace period for offline operation
@@ -254,11 +294,34 @@ func (lm *LicenseManager) ShouldCheckLicense() bool {
 // QuickValidate performs a quick validation using cache when possible
 // This is used for periodic checks during function calls
 func (lm *LicenseManager) QuickValidate(key string) error {
-	// If we have a valid cache and it's recent, skip API call
-	if lm.isValidCached(key) && !lm.ShouldCheckLicense() {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	
+	// Check if we've validated this key in the current session
+	if lm.sessionValidated && lm.sessionKey == key && 
+		time.Since(lm.sessionStartTime) < SessionCacheDuration {
 		return nil
 	}
+	
+	// Check regular cache without lock (unlock first to avoid deadlock)
+	lm.mu.Unlock()
+	if lm.isValidCached(key) && !lm.ShouldCheckLicense() {
+		lm.mu.Lock()
+		// Update session cache
+		lm.sessionValidated = true
+		lm.sessionStartTime = time.Now()
+		lm.sessionKey = key
+		return nil
+	}
+	lm.mu.Lock()
 
 	// Perform full validation
-	return lm.ValidateLicense(key)
+	err := lm.validateLicenseInternal(key)
+	if err == nil {
+		// Mark session as validated
+		lm.sessionValidated = true
+		lm.sessionStartTime = time.Now()
+		lm.sessionKey = key
+	}
+	return err
 }

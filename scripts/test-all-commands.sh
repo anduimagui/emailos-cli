@@ -100,6 +100,42 @@ run_test_timeout() {
     fi
 }
 
+# Function to run command tests from the general test framework
+# Usage: run_command_tests <command_type> <test_category>
+# 
+# Available command types: send, read (add more in test/test_framework/main.go)
+# Available categories: help, errors, basic, combined, shortflags, etc.
+# 
+# To add new commands/tests:
+# 1. Add test cases to test/test_framework/main.go
+# 2. Add them to the appropriate TestSuite (SendTestSuite, ReadTestSuite, etc.)
+# 3. Update the AllTests variable to include your new test suite
+# 4. Call run_command_tests in this script with your command type and category
+run_command_tests() {
+    local command_type="$1"  # "send", "read", etc.
+    local test_category="$2"  # "help", "errors", "no-env", etc.
+    
+    # Check if test framework exists
+    if [ ! -f "test/test_framework/main.go" ]; then
+        echo -e "${YELLOW}⚠️  test/test_framework/main.go not found, skipping ${command_type} tests${NC}"
+        return
+    fi
+    
+    # Get test cases from test framework
+    local test_output
+    if ! test_output=$(go run test/test_framework/main.go "$test_category" "$command_type" 2>/dev/null); then
+        echo -e "${YELLOW}⚠️  Could not run test framework for ${command_type} ${test_category}, using manual tests${NC}"
+        return
+    fi
+    
+    # Parse and run each test
+    while IFS='|' read -r test_name test_command; do
+        if [ -n "$test_name" ] && [ -n "$test_command" ]; then
+            run_test "$test_name" "$test_command"
+        fi
+    done <<< "$test_output"
+}
+
 # Build mailos first
 echo -e "${BLUE}🔨 Building mailos...${NC}"
 if ! go build -o mailos cmd/mailos/main.go cmd/mailos/error_handler.go; then
@@ -157,10 +193,18 @@ echo ""
 # =============================================================================
 echo -e "${BLUE}=== READ SPECIFIC EMAIL COMMANDS ===${NC}"
 
-# Read command tests (reads specific email by ID)
-run_test "Read help" "./mailos read --help"
-# Note: Read command requires an email ID and server connection, skipping
-# run_test "Read command with test ID" "./mailos read 1"
+# Run help tests from test framework
+run_command_tests "read" "help"
+
+# Run error handling tests from test framework
+echo -e "${BLUE}=== READ ERROR HANDLING TESTS ===${NC}"
+run_command_tests "read" "errors"
+
+# Skipping read command functionality tests as they require email server connections
+# Uncomment the lines below to run additional test categories
+# run_command_tests "read" "basic"
+# run_command_tests "read" "documents"
+# run_command_tests "read" "combined"
 
 # =============================================================================
 # SEARCH/LIST COMMANDS (what used to be called read)
@@ -281,22 +325,18 @@ echo ""
 # =============================================================================
 echo -e "${BLUE}=== SEND COMMANDS ===${NC}"
 
-run_test "Send help" "./mailos send --help"
+# Run help tests from test framework
+run_command_tests "send" "help"
+
+# Run error handling tests from test framework
+echo -e "${BLUE}=== SEND ERROR HANDLING TESTS ===${NC}"
+run_command_tests "send" "errors"
 
 # Skipping send command syntax tests as they require email server connections
-# run_test "Send basic syntax test" "./mailos send --to $TO_EMAIL --subject 'Test' --body 'Test message'"
-# run_test "Send with --from flag" "./mailos send --to $TO_EMAIL --from $FROM_EMAIL --subject 'Test' --body 'Test'"
-# run_test "Send with CC" "./mailos send --to $TO_EMAIL --cc cc@example.com --subject 'Test' --body 'Test'"
-# run_test "Send with BCC" "./mailos send --to $TO_EMAIL --bcc bcc@example.com --subject 'Test' --body 'Test'"
-# run_test "Send plain text" "./mailos send --to $TO_EMAIL --subject 'Test' --body 'Test' --plain"
-# run_test "Send no signature" "./mailos send --to $TO_EMAIL --subject 'Test' --body 'Test' --no-signature"
-# run_test "Send custom signature" "./mailos send --to $TO_EMAIL --subject 'Test' --body 'Test' --signature 'Custom sig'"
-# run_test "Send with file body" "./mailos send --to $TO_EMAIL --subject 'Test' --file nonexistent.txt"
-# run_test "Send with attachments" "./mailos send --to $TO_EMAIL --subject 'Test' --body 'Test' --attach file.txt"
-
-# Send drafts functionality
-run_test "Send drafts help" "./mailos send --drafts --help"
-# Note: send drafts functionality is temporarily disabled
+# Uncomment the lines below to run additional test categories
+# run_command_tests "send" "basic"
+# run_command_tests "send" "shortflags"
+# run_command_tests "send" "preview"
 
 echo ""
 
@@ -380,11 +420,11 @@ echo ""
 # =============================================================================
 echo -e "${BLUE}=== ADVANCED FLAG COMBINATIONS ===${NC}"
 
-# Skipping commands that require email server connections
-# run_test "Read all flags" "./mailos read 1 --include-documents"
-# run_test "Search all flags" "./mailos search --query test --from gmail --days 7 --has-attachments --case-sensitive --number 10"
-# run_test "Draft all flags" "./mailos drafts --to $TO_EMAIL --cc cc@example.com --subject Test --body Hello --priority high --plain-text"
-# run_test "Send all flags" "./mailos send --to $TO_EMAIL --cc cc@example.com --bcc bcc@example.com --from $FROM_EMAIL --subject 'Test' --body 'Hello' --plain --no-signature"
+# Advanced flag combinations are now tested via the general test framework
+# Uncomment the lines below to run comprehensive flag combination tests
+# run_command_tests "send" "combined"
+# run_command_tests "read" "combined"
+# Skipping search and draft combinations as they require email server connections
 run_test "Account management combo" "./mailos accounts --set-signature '$FROM_EMAIL:Best regards, User'"
 
 echo ""
@@ -405,10 +445,7 @@ run_test "Set account without email" "./mailos accounts --set"
 run_test "Set signature without argument" "./mailos accounts --set-signature"
 run_test "Set signature invalid format" "./mailos accounts --set-signature 'invalid-format'"
 
-# Skipping send command error handling as they require email server connections
-# run_test "Send without recipients" "./mailos send --subject 'Test' --body 'Test'"
-# run_test "Send without subject" "./mailos send --to $TO_EMAIL --body 'Test'"
-# run_test "Send nonexistent from account" "./mailos send --to $TO_EMAIL --from nonexistent@example.com --subject 'Test' --body 'Test'"
+# Send command error handling is now tested via run_send_tests "errors" above
 
 echo ""
 

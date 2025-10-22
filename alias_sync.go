@@ -233,6 +233,22 @@ func SyncFastMailAliases(token string) error {
 	return nil
 }
 
+// GetFastMailTokenInstructions returns the correct FastMail settings URL and instructions
+func GetFastMailTokenInstructions() string {
+	return `To sync aliases from FastMail, you need a JMAP API token.
+
+Steps to create a token:
+1. Go to FastMail Settings: https://app.fastmail.com/settings/security
+2. Scroll down to "App Passwords" section  
+3. Click "New App Password"
+4. Give it a name like "EmailOS CLI"
+5. Select scopes: "Email" and "Identity" (for reading aliases)
+6. Click "Generate password"
+7. Copy the generated token
+
+The token will look like: fm_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+}
+
 func TestFastMailJMAPConnection(token string) error {
 	fmt.Println("Testing FastMail JMAP API connection...")
 

@@ -225,7 +225,7 @@ func tryFlagAlias(cmd *cobra.Command, flagName string, args []string) error {
 			}
 			msg += fmt.Sprintf("\n\nUse 'mailos %s --help' for all available flags.", cmdName)
 			
-			return fmt.Errorf(msg)
+			return fmt.Errorf("%s", msg)
 		}
 	}
 	

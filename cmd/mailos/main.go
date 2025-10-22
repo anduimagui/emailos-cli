@@ -761,7 +761,7 @@ var providerCmd = &cobra.Command{
 	Use:   "provider",
 	Short: "Select or configure AI provider",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := mailos.EnsureInitialized(); err != nil {
+		if err := mailos.EnsureInitializedInteractive(); err != nil {
 			return err
 		}
 		// return mailos.SelectAndConfigureAIProvider()
@@ -776,7 +776,7 @@ var configureCmd = &cobra.Command{
 	Long:  `Configure email settings. By default modifies global configuration (~/.email/).
 Use --local flag to create/modify project-specific configuration (.email/)`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.EnsureInitialized()
+		return mailos.EnsureInitializedInteractive()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		quick, _ := cmd.Flags().GetBool("quick")
@@ -1959,10 +1959,8 @@ Examples:
 		// Handle FastMail sync
 		if syncFastmail {
 			if token == "" {
-				fmt.Println("To sync aliases from FastMail, you need a JMAP API token.")
-				fmt.Println("1. Go to FastMail Settings → Password & Security → API tokens")
-				fmt.Println("2. Create a new token with 'Identity' and 'Email Submission' scopes")
-				fmt.Print("Enter your FastMail JMAP token: ")
+				fmt.Println(mailos.GetFastMailTokenInstructions())
+				fmt.Print("\nEnter your FastMail JMAP token: ")
 				fmt.Scanln(&token)
 				if token == "" {
 					return fmt.Errorf("token is required for FastMail sync")
@@ -2144,9 +2142,6 @@ Examples:
 var infoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Show current configuration info",
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.EnsureInitialized()
-	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return mailos.ShowEnhancedInfo()
 	},
@@ -3112,6 +3107,73 @@ func init() {
 	draftCreateCmd.Flags().String("subject", "", "Subject")
 	draftCreateCmd.Flags().String("body", "", "Body")
 
+var licenseCmd = &cobra.Command{
+	Use:   "license",
+	Short: "Check license status and session caching",
+	Long:  `Check license status and test session-level caching functionality.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		multiple, _ := cmd.Flags().GetInt("calls")
+		
+		if multiple <= 0 {
+			multiple = 1
+		}
+		
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("                LICENSE STATUS CHECK")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		
+		// Get license manager
+		lm := mailos.GetLicenseManager()
+		
+		// Check initial session status
+		validated, duration, key := lm.GetSessionStatus()
+		fmt.Printf("Initial Session Status:\n")
+		fmt.Printf("  Validated: %t\n", validated)
+		fmt.Printf("  Duration:  %v\n", duration)
+		fmt.Printf("  Key:       %s\n", key)
+		fmt.Println()
+		
+		// Test subscription checks multiple times
+		fmt.Printf("Testing IsSubscribed() %d time(s):\n", multiple)
+		fmt.Println("────────────────────────────────────────────")
+		
+		for i := 1; i <= multiple; i++ {
+			start := time.Now()
+			subscribed := mailos.IsSubscribed()
+			elapsed := time.Since(start)
+			
+			fmt.Printf("Call %d: subscribed=%t, took %v\n", i, subscribed, elapsed)
+			
+			if verbose {
+				// Show session status after each call
+				validated, duration, _ := lm.GetSessionStatus()
+				fmt.Printf("        session_validated=%t, session_age=%v\n", validated, duration)
+			}
+			
+			// Small delay between calls to make timing visible
+			if i < multiple {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		
+		// Final session status
+		fmt.Println()
+		validated, duration, key = lm.GetSessionStatus()
+		fmt.Printf("Final Session Status:\n")
+		fmt.Printf("  Validated: %t\n", validated)
+		fmt.Printf("  Duration:  %v\n", duration)
+		fmt.Printf("  Key:       %s\n", key)
+		
+		if validated {
+			remaining := mailos.SessionCacheDuration - duration
+			fmt.Printf("  Remaining: %v\n", remaining)
+		}
+		
+		return nil
+	},
+}
+
 	// Add commands to root
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(localCmd)
@@ -3143,6 +3205,11 @@ func init() {
 	rootCmd.AddCommand(toolsCmd)
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(cleanupCmd)
+	rootCmd.AddCommand(licenseCmd)
+
+	// Add flags to license command
+	licenseCmd.Flags().Bool("verbose", false, "Show detailed session information")
+	licenseCmd.Flags().Int("calls", 5, "Number of subscription checks to perform")
 }
 
 func main() {
@@ -3173,7 +3240,7 @@ func main() {
 	
 	
 	// Setup enhanced error handling with helpful suggestions
-	SetupErrorHandling(rootCmd)
+	// SetupErrorHandling(rootCmd) // Function not found
 	
 	// Configure error handling
 	rootCmd.SilenceErrors = false

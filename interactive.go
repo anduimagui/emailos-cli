@@ -609,12 +609,22 @@ func isGitRepo() bool {
 
 // ShowEnhancedInfo displays comprehensive configuration and help information
 func ShowEnhancedInfo() error {
-	client, err := NewClient()
-	if err != nil {
-		return err
+	// Try to load client and config, but handle gracefully if not configured
+	var client *Client
+	var config *Config
+	
+	// Check if we can create a client
+	if ConfigExists() {
+		if c, err := NewClient(); err == nil {
+			client = c
+			config = client.GetConfig()
+		}
 	}
-
-	config := client.GetConfig()
+	
+	// If no config exists, show setup instructions
+	if config == nil {
+		return showUnconfiguredInfo()
+	}
 	
 	// Email Configuration Section
 	fmt.Println("Email Configuration (Global ~/.email/)")
@@ -753,6 +763,79 @@ func ShowEnhancedInfo() error {
 	fmt.Printf("  Interactive Mode         Rich menu-driven interface\n")
 	fmt.Printf("  Error Handling           Commands return meaningful errors\n")
 	fmt.Printf("  State Management         Session-based account switching\n")
+	
+	return nil
+}
+
+// showUnconfiguredInfo displays help information when EmailOS is not configured
+func showUnconfiguredInfo() error {
+	fmt.Println("EmailOS - Command Line Email Client")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Println("EmailOS is not yet configured on this system.")
+	fmt.Println()
+	
+	// Setup Instructions
+	fmt.Println("SETUP INSTRUCTIONS")
+	fmt.Println("━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Println("To get started with EmailOS, run the setup command in an interactive terminal:")
+	fmt.Println()
+	fmt.Printf("  mailos setup\n")
+	fmt.Println()
+	fmt.Println("The setup process will guide you through:")
+	fmt.Println("• Email provider configuration (Gmail, Fastmail, Outlook, etc.)")
+	fmt.Println("• App-specific password setup")
+	fmt.Println("• AI CLI integration (Claude Code, GPT-4, etc.)")
+	fmt.Println("• License key validation")
+	fmt.Println()
+	
+	// Available Commands (without config)
+	fmt.Println("AVAILABLE COMMANDS")
+	fmt.Println("━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Printf("  mailos setup             Configure EmailOS for first use\n")
+	fmt.Printf("  mailos help              Show detailed command help\n")
+	fmt.Printf("  mailos info              Show this information\n")
+	fmt.Printf("  mailos version           Show version information\n")
+	fmt.Println()
+	
+	// AI Environment Note
+	if isAIEnvironment() {
+		fmt.Println("AI ENVIRONMENT DETECTED")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		fmt.Println("You appear to be running EmailOS from an AI CLI environment.")
+		fmt.Println("Interactive setup must be performed in a regular terminal.")
+		fmt.Println()
+		fmt.Println("To configure EmailOS:")
+		fmt.Println("1. Open a regular terminal/command prompt")
+		fmt.Println("2. Run: mailos setup")
+		fmt.Println("3. Follow the interactive configuration wizard")
+		fmt.Println("4. Return to this AI environment to use EmailOS commands")
+		fmt.Println()
+	}
+	
+	// Documentation and Resources
+	fmt.Println("DOCUMENTATION & RESOURCES")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Printf("  GitHub Repository        https://github.com/anduimagui/emailos\n")
+	fmt.Printf("  Purchase License         https://email-os.com/checkout\n")
+	fmt.Printf("  Setup Guide              mailos help setup\n")
+	fmt.Printf("  Command Reference        mailos help commands\n")
+	fmt.Println()
+	
+	// Environment Information
+	fmt.Println("ENVIRONMENT")
+	fmt.Println("━━━━━━━━━━━")
+	fmt.Printf("  Current Directory        %s\n", getCurrentDirectory())
+	fmt.Printf("  Config Location          ~/.email/config.json (not found)\n")
+	fmt.Printf("  Interactive Terminal     %t\n", isInteractiveTerminal())
+	fmt.Printf("  AI Environment           %t\n", isAIEnvironment())
+	if isGitRepo() {
+		fmt.Printf("  Git Repository           Yes\n")
+	}
 	
 	return nil
 }

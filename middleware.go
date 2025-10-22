@@ -10,12 +10,93 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// isAIEnvironment detects if running in an AI CLI environment
+func isAIEnvironment() bool {
+	// Check for common AI CLI environment variables and parent processes
+	aiIndicators := []string{
+		"CLAUDE_CODE", "CLAUDE_CLI", "CODEX", "OPENAI_CLI", "GEMINI_CLI", 
+		"AI_CLI", "ANTHROPIC_CLI", "GPT_CLI", "LLM_CLI",
+	}
+	
+	for _, indicator := range aiIndicators {
+		if os.Getenv(indicator) != "" {
+			return true
+		}
+	}
+	
+	// Check parent process name for AI CLI tools
+	if parent := os.Getenv("_"); parent != "" {
+		aiProcesses := []string{"claude", "codex", "gpt", "gemini", "ai-cli"}
+		for _, process := range aiProcesses {
+			if strings.Contains(strings.ToLower(parent), process) {
+				return true
+			}
+		}
+	}
+	
+	// Check if stdin/stdout is not a terminal (pipe/redirect)
+	if !isInteractiveTerminal() {
+		return true
+	}
+	
+	return false
+}
+
+// isInteractiveTerminal checks if we're running in an interactive terminal
+func isInteractiveTerminal() bool {
+	// Check if stdin is a terminal
+	if fileInfo, _ := os.Stdin.Stat(); (fileInfo.Mode() & os.ModeCharDevice) == 0 {
+		return false
+	}
+	
+	// Check if stdout is a terminal  
+	if fileInfo, _ := os.Stdout.Stat(); (fileInfo.Mode() & os.ModeCharDevice) == 0 {
+		return false
+	}
+	
+	return true
+}
+
 // EnsureInitialized validates that the system is properly configured
 // This should be called before any command that requires email configuration
+// Now defaults to showing error messages instead of launching interactive setup
 func EnsureInitialized() error {
 	// Check if config exists
 	if !ConfigExists() {
-		// Run setup automatically when no config exists
+		return fmt.Errorf("MailOS is not configured. Run: mailos setup\n\nYou'll need:\n• Your email address\n• App-specific password (not your regular password)\n• Email provider info (Gmail, Fastmail, Outlook, etc.)")
+	}
+	
+	// Load config 
+	config, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %v", err)
+	}
+	
+	// Email configuration is required, but license is now optional
+	if config.Email == "" || config.Password == "" {
+		return fmt.Errorf("MailOS configuration is incomplete. Run: mailos setup\n\nYou'll need:\n• Your email address\n• App-specific password (not your regular password)")
+	}
+	
+	// Check if auto-sync is needed (run in background, don't block)
+	go func() {
+		if err := RunAutoSyncIfNeeded(); err != nil {
+			// Silently fail - auto-sync is not critical
+		}
+	}()
+	
+	return nil
+}
+
+// EnsureInitializedInteractive is the old behavior that launches interactive setup
+// This should only be used for commands that explicitly want interactive setup
+func EnsureInitializedInteractive() error {
+	// Check if config exists
+	if !ConfigExists() {
+		// If running in AI environment, don't run interactive setup
+		if isAIEnvironment() {
+			return fmt.Errorf("email configuration not found. Please run 'mailos setup' in an interactive terminal to configure EmailOS")
+		}
+		// Run setup automatically when no config exists in interactive mode
 		return Setup()
 	}
 	
@@ -27,7 +108,11 @@ func EnsureInitialized() error {
 	
 	// Email configuration is required, but license is now optional
 	if config.Email == "" || config.Password == "" {
-		// Run setup to configure email if missing
+		// If running in AI environment, don't run interactive setup
+		if isAIEnvironment() {
+			return fmt.Errorf("email configuration incomplete. Please run 'mailos setup' in an interactive terminal to complete configuration")
+		}
+		// Run setup to configure email if missing in interactive mode
 		return Setup()
 	}
 	
@@ -57,6 +142,12 @@ func IsSubscribed() bool {
 	
 	// Get license manager but only use cached data for security
 	lm := GetLicenseManager()
+	
+	// Check session cache first (fastest path)
+	if validated, duration, sessionKey := lm.GetSessionStatus(); validated && 
+		sessionKey == config.LicenseKey && duration < SessionCacheDuration {
+		return true
+	}
 	
 	// First check if we have valid cached license (no API call)
 	if cache := lm.GetCachedLicense(); cache != nil && cache.Key == config.LicenseKey {

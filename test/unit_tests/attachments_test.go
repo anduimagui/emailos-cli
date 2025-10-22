@@ -1,14 +1,16 @@
-package mailos
+package mailos_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
+	
+	mailos "github.com/anduimagui/emailos"
 )
 
 func TestAttachmentData(t *testing.T) {
 	// Create a test email with attachment data
-	email := &Email{
+	email := &mailos.Email{
 		ID:      1,
 		From:    "test@example.com",
 		To:      []string{"recipient@example.com"},
