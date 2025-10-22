@@ -2770,29 +2770,6 @@ Useful when EmailOS was uninstalled by a package manager but data remains.`,
 	},
 }
 
-var interactiveCmd = &cobra.Command{
-	Use:   "interactive",
-	Short: "Launch interactive mode",
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.EnsureInitialized()
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.InteractiveModeWithMenu()
-	},
-}
-
-var chatCmd = &cobra.Command{
-	Use:   "chat",
-	Short: "Launch AI chat interface",
-	Long:  `Launch the AI chat interface for natural language email interactions.`,
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.EnsureInitialized()
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// return mailos.LaunchAIChatInterface()
-		return mailos.InteractiveModeWithMenu()
-	},
-}
 
 
 var unsubscribeCmd = &cobra.Command{
@@ -3159,8 +3136,6 @@ func init() {
 	rootCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(unsubscribeCmd)
-	rootCmd.AddCommand(interactiveCmd)
-	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(docsCmd)

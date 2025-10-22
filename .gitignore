@@ -79,3 +79,4 @@ cmd/mailos/mailos-test
 
 # Test attachment files (user data)
 cmd/mailos/test-attachments/
+/test/attachments

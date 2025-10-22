@@ -130,6 +130,108 @@ var CommandSuggestions = map[string]map[string]string{
 	},
 }
 
+// FlagAliases maps common alternative flag names to their correct equivalents
+var FlagAliases = map[string]map[string]string{
+	"send": {
+		"recipient":    "to",
+		"recipients":   "to",
+		"dest":         "to",
+		"destination":  "to",
+		"email":        "to",
+		"msg":          "body",
+		"message":      "body",
+		"content":      "body",
+		"text":         "body",
+		"attachment":   "attach",
+		"attachments":  "attach",
+		"files":        "attach",
+		"copy":         "cc",
+		"blind-copy":   "bcc",
+		"title":        "subject",
+	},
+	"search": {
+		"sender":       "from",
+		"author":       "from",
+		"recipient":    "to",
+		"dest":         "to",
+		"title":        "subject",
+		"limit":        "number",
+		"count":        "number",
+		"max":          "number",
+		"recent":       "days",
+		"since":        "days",
+	},
+	"read": {
+		"email-id":     "id",
+		"message-id":   "id",
+		"mail-id":      "id",
+		"docs":         "include-documents",
+		"documents":    "include-documents",
+		"attachments":  "include-documents",
+	},
+	"delete": {
+		"sender":       "from",
+		"author":       "from",
+		"title":        "subject",
+		"age":          "days",
+		"older-than":   "days",
+		"force":        "confirm",
+	},
+	"accounts": {
+		"create":       "add",
+		"new":          "add",
+		"register":     "add",
+		"switch":       "set",
+		"change":       "set",
+		"select":       "set",
+		"remove":       "clear",
+		"delete":       "clear",
+		"show":         "list",
+		"display":      "list",
+	},
+	"configure": {
+		"setup":        "quick",
+		"wizard":       "quick",
+		"account":      "email",
+		"user":         "email",
+		"service":      "provider",
+		"display":      "name",
+		"sender":       "from",
+	},
+}
+
+// tryFlagAlias attempts to find an alias for the unknown flag and execute the command with the correct flag
+func tryFlagAlias(cmd *cobra.Command, flagName string, args []string) error {
+	cmdName := cmd.Name()
+	
+	// Check if we have aliases for this command
+	if aliases, exists := FlagAliases[cmdName]; exists {
+		if correctFlag, hasAlias := aliases[flagName]; hasAlias {
+			// Find the original flag value from the args
+			flagValue := ""
+			for i, arg := range args {
+				if arg == "--"+flagName && i+1 < len(args) {
+					flagValue = args[i+1]
+					break
+				}
+			}
+			
+			// Provide helpful message about the alias
+			msg := fmt.Sprintf("💡 Flag alias detected: --%s is equivalent to --%s", flagName, correctFlag)
+			if flagValue != "" {
+				msg += fmt.Sprintf("\n📝 Try: mailos %s --%s %s", cmdName, correctFlag, flagValue)
+			} else {
+				msg += fmt.Sprintf("\n📝 Try: mailos %s --%s <value>", cmdName, correctFlag)
+			}
+			msg += fmt.Sprintf("\n\nUse 'mailos %s --help' for all available flags.", cmdName)
+			
+			return fmt.Errorf(msg)
+		}
+	}
+	
+	return nil
+}
+
 // SuggestCorrectCommand analyzes the error and provides helpful suggestions
 func SuggestCorrectCommand(cmd *cobra.Command, args []string, err error) error {
 	if err == nil {
@@ -143,6 +245,11 @@ func SuggestCorrectCommand(cmd *cobra.Command, args []string, err error) error {
 	if strings.Contains(errStr, "unknown flag:") || strings.Contains(errStr, "unknown shorthand flag:") {
 		flagName := extractFlagName(errStr)
 		if flagName != "" {
+			// First, try to find a flag alias
+			if aliasErr := tryFlagAlias(cmd, flagName, args); aliasErr != nil {
+				return aliasErr
+			}
+			// If no alias found, provide general suggestions
 			return handleUnknownFlag(cmdName, flagName, errStr)
 		}
 	}
