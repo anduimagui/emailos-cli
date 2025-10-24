@@ -14,8 +14,6 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
-	
-	"github.com/anduimagui/emailos-cli/internal/core"
 )
 
 type Email struct {
@@ -516,16 +514,62 @@ func DeleteEmailsFromFolder(ids []uint32, folder string) error {
 		return fmt.Errorf("failed to load config: %v", err)
 	}
 
-	// Create wrapper for the config to implement the interface
-	wrapper := &core.ConfigWrapper{
-		Email:    config.Email,
-		Password: config.Password,
-		Provider: config.Provider,
-		GetIMAPSettingsFunc: config.GetIMAPSettings,
+	// Get IMAP settings from provider
+	imapHost, imapPort, err := config.GetIMAPSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get IMAP settings: %v", err)
 	}
 
-	// Use the new internal core delete functionality
-	return core.DeleteEmailsFromFolder(ids, folder, wrapper)
+	// Connect to IMAP server
+	var c *client.Client
+	if imapPort == 993 {
+		// Use TLS
+		tlsConfig := &tls.Config{ServerName: imapHost}
+		c, err = client.DialTLS(fmt.Sprintf("%s:%d", imapHost, imapPort), tlsConfig)
+	} else {
+		// Use plain connection
+		c, err = client.Dial(fmt.Sprintf("%s:%d", imapHost, imapPort))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to connect to IMAP server: %v", err)
+	}
+	defer c.Logout()
+
+	// Login
+	if err := c.Login(config.Email, config.Password); err != nil {
+		return fmt.Errorf("failed to login to IMAP server: %v", err)
+	}
+
+	// Select the folder
+	_, err = c.Select(folder, false)
+	if err != nil {
+		return fmt.Errorf("failed to select folder %s: %v", folder, err)
+	}
+
+	if len(ids) == 0 {
+		return nil // Nothing to delete
+	}
+
+	// Create sequence set for the IDs
+	seqSet := new(imap.SeqSet)
+	for _, id := range ids {
+		seqSet.AddNum(id)
+	}
+
+	// Mark messages as deleted
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.DeletedFlag}
+	if err := c.Store(seqSet, item, flags, nil); err != nil {
+		return fmt.Errorf("failed to mark messages as deleted: %v", err)
+	}
+
+	// Expunge to permanently delete
+	if err := c.Expunge(nil); err != nil {
+		return fmt.Errorf("failed to expunge deleted messages: %v", err)
+	}
+
+	fmt.Printf("Successfully deleted %d messages from %s folder\n", len(ids), folder)
+	return nil
 }
 
 // readFromLocalStorage reads emails from the local .email/received directory
