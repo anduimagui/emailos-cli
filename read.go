@@ -14,6 +14,8 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
+	
+	"github.com/anduimagui/emailos/internal/core"
 )
 
 type Email struct {
@@ -28,6 +30,7 @@ type Email struct {
 	AttachmentData  map[string][]byte // Map of filename to attachment data
 	MessageID       string             // Message-ID header for threading
 	InReplyTo       string             // In-Reply-To header for threading
+	Headers         map[string][]string // All email headers
 }
 
 type ReadOptions struct {
@@ -513,61 +516,16 @@ func DeleteEmailsFromFolder(ids []uint32, folder string) error {
 		return fmt.Errorf("failed to load config: %v", err)
 	}
 
-	// Get IMAP settings from provider
-	imapHost, imapPort, err := config.GetIMAPSettings()
-	if err != nil {
-		return fmt.Errorf("failed to get IMAP settings: %v", err)
+	// Create wrapper for the config to implement the interface
+	wrapper := &core.ConfigWrapper{
+		Email:    config.Email,
+		Password: config.Password,
+		Provider: config.Provider,
+		GetIMAPSettingsFunc: config.GetIMAPSettings,
 	}
 
-	// Connect to IMAP server
-	var c *client.Client
-	if imapPort == 993 {
-		tlsConfig := &tls.Config{ServerName: imapHost}
-		c, err = client.DialTLS(fmt.Sprintf("%s:%d", imapHost, imapPort), tlsConfig)
-	} else {
-		c, err = client.Dial(fmt.Sprintf("%s:%d", imapHost, imapPort))
-	}
-	if err != nil {
-		return fmt.Errorf("failed to connect to IMAP server: %v", err)
-	}
-	defer c.Logout()
-
-	// Login
-	if err := c.Login(config.Email, config.Password); err != nil {
-		return fmt.Errorf("failed to login: %v", err)
-	}
-
-	// Select the specified folder
-	_, err = c.Select(folder, false)
-	if err != nil {
-		// Try with [Gmail]/Drafts for Gmail
-		if folder == "Drafts" && config.Provider == ProviderGmail {
-			_, err = c.Select("[Gmail]/Drafts", false)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to select %s folder: %v", folder, err)
-		}
-	}
-
-	// Create sequence set
-	seqSet := new(imap.SeqSet)
-	for _, id := range ids {
-		seqSet.AddNum(id)
-	}
-
-	// Mark as deleted
-	item := imap.FormatFlagsOp(imap.AddFlags, true)
-	flags := []interface{}{imap.DeletedFlag}
-	if err := c.Store(seqSet, item, flags, nil); err != nil {
-		return fmt.Errorf("failed to mark messages for deletion: %v", err)
-	}
-
-	// Expunge to permanently delete
-	if err := c.Expunge(nil); err != nil {
-		return fmt.Errorf("failed to expunge deleted messages: %v", err)
-	}
-
-	return nil
+	// Use the new internal core delete functionality
+	return core.DeleteEmailsFromFolder(ids, folder, wrapper)
 }
 
 // readFromLocalStorage reads emails from the local .email/received directory

@@ -81,3 +81,5 @@ cmd/mailos/mailos-test
 cmd/mailos/test-attachments/
 /test/attachments
 EMAILOS.md
+/todos
+CLAUDE.md

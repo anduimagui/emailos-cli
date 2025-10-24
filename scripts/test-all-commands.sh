@@ -380,6 +380,38 @@ echo ""
 
 
 # =============================================================================
+# GROUPS COMMANDS
+# =============================================================================
+echo -e "${BLUE}=== GROUPS COMMANDS ===${NC}"
+
+# Run help tests from test framework
+run_command_tests "groups" "help"
+
+# Run basic groups functionality tests
+echo -e "${BLUE}=== GROUPS BASIC FUNCTIONALITY TESTS ===${NC}"
+run_command_tests "groups" "basic"
+
+# Run member management tests
+echo -e "${BLUE}=== GROUPS MEMBER MANAGEMENT TESTS ===${NC}"
+run_command_tests "groups" "members"
+
+# Run error handling tests for groups
+echo -e "${BLUE}=== GROUPS ERROR HANDLING TESTS ===${NC}"
+run_command_tests "groups" "errors"
+
+# Run validation tests for groups
+echo -e "${BLUE}=== GROUPS VALIDATION TESTS ===${NC}"
+run_command_tests "groups" "validation"
+
+# Skipping sending tests as they require email server connections
+# Uncomment the lines below to run group sending tests
+# run_command_tests "groups" "sending"
+# run_command_tests "groups" "advanced"
+# run_command_tests "groups" "integration"
+
+echo ""
+
+# =============================================================================
 # TEMPLATE COMMANDS
 # =============================================================================
 echo -e "${BLUE}=== TEMPLATE COMMANDS ===${NC}"

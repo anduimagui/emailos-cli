@@ -112,7 +112,7 @@ func handleSlashCommand(command string) error {
 		return ManageTemplate()
 
 	case "/configure":
-		return Configure()
+		return Configure(ConfigureOptions{})
 
 	case "/info":
 		return showInfo()

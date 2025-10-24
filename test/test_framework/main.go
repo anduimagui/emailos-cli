@@ -23,6 +23,7 @@ var AllTests = []CommandTest{}
 func init() {
 	AllTests = append(AllTests, SendTestSuite...)
 	AllTests = append(AllTests, ReadTestSuite...)
+	AllTests = append(AllTests, GroupsTestSuite...)
 }
 
 // SendTestSuite contains all send command test cases
@@ -502,6 +503,241 @@ var ReadTestSuite = []CommandTest{
 		RequiresEnv:  true,
 		Category:     "errors",
 		Command_Type: "read",
+	},
+}
+
+// GroupsTestSuite contains all groups command test cases
+var GroupsTestSuite = []CommandTest{
+	// Basic groups tests
+	{
+		Name:         "Groups help",
+		Command:      "./mailos groups --help",
+		Description:  "Test groups command help output",
+		RequiresEnv:  false,
+		Category:     "help",
+		Command_Type: "groups",
+	},
+
+	// Basic groups functionality tests
+	{
+		Name:         "List groups (empty)",
+		Command:      "./mailos groups",
+		Description:  "List groups when no groups exist",
+		RequiresEnv:  false,
+		Category:     "basic",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Create basic group",
+		Command:      "./mailos groups --update 'test-group' --emails 'andrew@happysoft.dev,andremg212@gmail.com' --description 'Test group'",
+		Description:  "Create a basic email group",
+		RequiresEnv:  false,
+		Category:     "basic",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "List groups (with content)",
+		Command:      "./mailos groups",
+		Description:  "List groups when groups exist",
+		RequiresEnv:  false,
+		Category:     "basic",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Delete group",
+		Command:      "./mailos groups --delete 'test-group'",
+		Description:  "Delete an existing group",
+		RequiresEnv:  false,
+		Category:     "basic",
+		Command_Type: "groups",
+	},
+
+	// Member management tests
+	{
+		Name:         "Add member to group",
+		Command:      "./mailos groups --group 'test-contacts' --add-member 'newuser@example.com'",
+		Description:  "Add a member to an existing group",
+		RequiresEnv:  false,
+		Category:     "members",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Remove member from group",
+		Command:      "./mailos groups --group 'test-contacts' --remove-member 'newuser@example.com'",
+		Description:  "Remove a member from an existing group",
+		RequiresEnv:  false,
+		Category:     "members",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "List group members",
+		Command:      "./mailos groups --list-members 'test-contacts'",
+		Description:  "List all members of a specific group",
+		RequiresEnv:  false,
+		Category:     "members",
+		Command_Type: "groups",
+	},
+
+	// Advanced group operations
+	{
+		Name:         "Update group with new description",
+		Command:      "./mailos groups --update 'test-contacts' --emails 'andrew@happysoft.dev,andremg212@gmail.com' --description 'Updated test contacts'",
+		Description:  "Update existing group with new description",
+		RequiresEnv:  false,
+		Category:     "advanced",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Create group with many members",
+		Command:      "./mailos groups --update 'large-group' --emails 'user1@example.com,user2@example.com,user3@example.com,user4@example.com,user5@example.com' --description 'Large group test'",
+		Description:  "Create group with multiple members",
+		RequiresEnv:  false,
+		Category:     "advanced",
+		Command_Type: "groups",
+	},
+
+	// Send to groups tests
+	{
+		Name:         "Send to group (dry-run)",
+		Command:      "./mailos send --group 'test-contacts' --subject 'Group Test' --body 'Testing group sending' --dry-run",
+		Description:  "Send email to group in dry-run mode",
+		RequiresEnv:  true,
+		Category:     "sending",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Send to group with individual recipients",
+		Command:      "./mailos send --group 'test-contacts' --to 'individual@example.com' --subject 'Combined Test' --body 'Testing combined recipients' --dry-run",
+		Description:  "Send to both group and individual recipients",
+		RequiresEnv:  true,
+		Category:     "sending",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Preview send to group",
+		Command:      "./mailos send --group 'test-contacts' --subject 'Preview Test' --body 'Testing group preview' --preview",
+		Description:  "Preview email sending to group",
+		RequiresEnv:  true,
+		Category:     "sending",
+		Command_Type: "groups",
+	},
+
+	// Error handling tests
+	{
+		Name:         "Create group without name",
+		Command:      "./mailos groups --update '' --emails 'test@example.com'",
+		Description:  "Error: Create group without name",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Create group without emails",
+		Command:      "./mailos groups --update 'test-group' --emails ''",
+		Description:  "Error: Create group without emails",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Delete non-existent group",
+		Command:      "./mailos groups --delete 'non-existent-group'",
+		Description:  "Error: Delete non-existent group",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Add member without group name",
+		Command:      "./mailos groups --add-member 'test@example.com'",
+		Description:  "Error: Add member without specifying group",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Remove member without group name",
+		Command:      "./mailos groups --remove-member 'test@example.com'",
+		Description:  "Error: Remove member without specifying group",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Add member to non-existent group",
+		Command:      "./mailos groups --group 'non-existent' --add-member 'test@example.com'",
+		Description:  "Error: Add member to non-existent group",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Remove member from non-existent group",
+		Command:      "./mailos groups --group 'non-existent' --remove-member 'test@example.com'",
+		Description:  "Error: Remove member from non-existent group",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "List members of non-existent group",
+		Command:      "./mailos groups --list-members 'non-existent-group'",
+		Description:  "Error: List members of non-existent group",
+		RequiresEnv:  false,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Send to non-existent group",
+		Command:      "./mailos send --group 'non-existent-group' --subject 'Test' --body 'Test' --dry-run",
+		Description:  "Error: Send to non-existent group",
+		RequiresEnv:  true,
+		Category:     "errors",
+		Command_Type: "groups",
+	},
+
+	// Validation tests
+	{
+		Name:         "Create group with invalid emails",
+		Command:      "./mailos groups --update 'validation-test' --emails 'valid@example.com,invalid-email,another@valid.com'",
+		Description:  "Create group with mix of valid and invalid emails",
+		RequiresEnv:  false,
+		Category:     "validation",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Add invalid email to group",
+		Command:      "./mailos groups --group 'test-contacts' --add-member 'invalid-email-format'",
+		Description:  "Error: Add invalid email format to group",
+		RequiresEnv:  false,
+		Category:     "validation",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Add duplicate member to group",
+		Command:      "./mailos groups --group 'test-contacts' --add-member 'andrew@happysoft.dev'",
+		Description:  "Error: Add duplicate member to group",
+		RequiresEnv:  false,
+		Category:     "validation",
+		Command_Type: "groups",
+	},
+
+	// Integration tests
+	{
+		Name:         "Create multiple groups",
+		Command:      "./mailos groups --update 'marketing' --emails 'marketing@example.com' --description 'Marketing team'",
+		Description:  "Create multiple groups for integration testing",
+		RequiresEnv:  false,
+		Category:     "integration",
+		Command_Type: "groups",
+	},
+	{
+		Name:         "Full workflow test",
+		Command:      "./mailos groups --update 'workflow-test' --emails 'user1@example.com,user2@example.com' --description 'Workflow test group'",
+		Description:  "Complete workflow: create, modify, use, delete group",
+		RequiresEnv:  false,
+		Category:     "integration",
+		Command_Type: "groups",
 	},
 }
 

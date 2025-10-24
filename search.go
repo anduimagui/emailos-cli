@@ -19,6 +19,7 @@ func SearchCommand(args []string) error {
 	
 	saveToFile := false
 	outputDir := "emails"
+	countOnly := false
 
 	// Parse arguments
 	for i := 0; i < len(args); i++ {
@@ -109,6 +110,8 @@ func SearchCommand(args []string) error {
 				advOpts.DateRange = args[i+1]
 				i++
 			}
+		case "--count-only", "-c":
+			countOnly = true
 		}
 	}
 
@@ -138,10 +141,13 @@ func SearchCommand(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("Found %d emails matching search criteria:\n\n", len(emails))
-
-	// Display emails as snippets with IDs
-	fmt.Print(FormatEmailList(emails))
+	if countOnly {
+		fmt.Printf("Found %d emails matching search criteria\n", len(emails))
+	} else {
+		fmt.Printf("Found %d emails matching search criteria:\n\n", len(emails))
+		// Display emails as snippets with IDs
+		fmt.Print(FormatEmailList(emails))
+	}
 
 	// Optionally save to files if requested
 	if saveToFile {

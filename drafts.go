@@ -313,15 +313,47 @@ func DraftsCommand(opts DraftsOptions) error {
 				body = string(fileContent)
 			}
 			
-			// Create draft from command-line arguments
-			draft := DraftEmail{
-				To:          opts.To,
-				CC:          opts.CC,
-				BCC:         opts.BCC,
-				Subject:     opts.Subject,
-				Body:        body,
-				Attachments: opts.Attachments,
-				Priority:    opts.Priority,
+			// Parse frontmatter if present in body content
+			frontmatter, bodyContent, err := ParseFrontmatter(body)
+			if err != nil {
+				return fmt.Errorf("failed to parse frontmatter: %v", err)
+			}
+			
+			var draft DraftEmail
+			if frontmatter != nil {
+				// Use frontmatter data and merge with command-line options
+				draft = frontmatter.ToDraftEmail(bodyContent)
+				
+				// Command-line arguments override frontmatter
+				if len(opts.To) > 0 {
+					draft.To = opts.To
+				}
+				if len(opts.CC) > 0 {
+					draft.CC = opts.CC
+				}
+				if len(opts.BCC) > 0 {
+					draft.BCC = opts.BCC
+				}
+				if opts.Subject != "" {
+					draft.Subject = opts.Subject
+				}
+				if len(opts.Attachments) > 0 {
+					draft.Attachments = opts.Attachments
+				}
+				if opts.Priority != "" {
+					draft.Priority = opts.Priority
+				}
+			} else {
+				// Create draft from command-line arguments only
+				draft = DraftEmail{
+					To:          opts.To,
+					CC:          opts.CC,
+					BCC:         opts.BCC,
+					Subject:     opts.Subject,
+					Body:        bodyContent,
+					Attachments: opts.Attachments,
+					Priority:    opts.Priority,
+				}
 			}
 			drafts = []DraftEmail{draft}
 		} else {
@@ -993,24 +1025,57 @@ func editDraftInIMAP(opts DraftsOptions) error {
 		return fmt.Errorf("failed to expunge old draft: %v", err)
 	}
 
-	// Create the updated draft
-	draft := DraftEmail{
-		To:          opts.To,
-		CC:          opts.CC,
-		BCC:         opts.BCC,
-		Subject:     opts.Subject,
-		Body:        opts.Body,
-		Attachments: opts.Attachments,
-		Priority:    opts.Priority,
-	}
-
-	// If body was specified from file, read it
+	// Handle body content (from direct input or file)
+	bodyContent := opts.Body
 	if opts.FileBody != "" {
 		fileContent, err := os.ReadFile(opts.FileBody)
 		if err != nil {
 			return fmt.Errorf("failed to read body from file %s: %v", opts.FileBody, err)
 		}
-		draft.Body = string(fileContent)
+		bodyContent = string(fileContent)
+	}
+
+	// Parse frontmatter if present in body content
+	frontmatter, parsedBody, err := ParseFrontmatter(bodyContent)
+	if err != nil {
+		return fmt.Errorf("failed to parse frontmatter: %v", err)
+	}
+
+	var draft DraftEmail
+	if frontmatter != nil {
+		// Use frontmatter data and merge with command-line options
+		draft = frontmatter.ToDraftEmail(parsedBody)
+		
+		// Command-line arguments override frontmatter
+		if len(opts.To) > 0 {
+			draft.To = opts.To
+		}
+		if len(opts.CC) > 0 {
+			draft.CC = opts.CC
+		}
+		if len(opts.BCC) > 0 {
+			draft.BCC = opts.BCC
+		}
+		if opts.Subject != "" {
+			draft.Subject = opts.Subject
+		}
+		if len(opts.Attachments) > 0 {
+			draft.Attachments = opts.Attachments
+		}
+		if opts.Priority != "" {
+			draft.Priority = opts.Priority
+		}
+	} else {
+		// Create draft from command-line arguments only
+		draft = DraftEmail{
+			To:          opts.To,
+			CC:          opts.CC,
+			BCC:         opts.BCC,
+			Subject:     opts.Subject,
+			Body:        parsedBody,
+			Attachments: opts.Attachments,
+			Priority:    opts.Priority,
+		}
 	}
 
 	// Save the updated draft
@@ -1020,5 +1085,42 @@ func editDraftInIMAP(opts DraftsOptions) error {
 	}
 
 	fmt.Printf("✓ Updated draft (old UID: %d, new UID: %d)\n", opts.EditUID, newUID)
+	return nil
+}
+
+func CreateDraftFromMarkdownFile(filePath string) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %v", filePath, err)
+	}
+	
+	frontmatter, bodyContent, err := ParseFrontmatter(string(content))
+	if err != nil {
+		return fmt.Errorf("failed to parse frontmatter: %v", err)
+	}
+	
+	var draft DraftEmail
+	if frontmatter != nil {
+		draft = frontmatter.ToDraftEmail(bodyContent)
+	} else {
+		draft = DraftEmail{
+			Body: bodyContent,
+		}
+	}
+	
+	// Save draft to both local files and IMAP Drafts folder
+	if err := saveLocalDraft(draft); err != nil {
+		fmt.Printf("⚠️  Could not save draft to local storage: %v\n", err)
+	} else {
+		fmt.Printf("✓ Saved draft to local .email/drafts folder\n")
+	}
+	
+	uid, err := saveDraftToIMAP(draft)
+	if err != nil {
+		fmt.Printf("⚠️  Could not save draft to email account: %v\n", err)
+	} else {
+		fmt.Printf("✓ Saved draft to email account's Drafts folder (UID: %d)\n", uid)
+	}
+	
 	return nil
 }

@@ -75,7 +75,7 @@ func HandleQueryWithProviderSelection(query string) error {
 		}
 
 		if provider == "configure" {
-			return Configure()
+			return Configure(ConfigureOptions{})
 		}
 
 		if provider != "none" {
@@ -140,7 +140,7 @@ func QuickConfigMenu() error {
 	case 3: // Change AI CLI
 		return editAICLI(config)
 	case 4: // Full configuration
-		return Configure()
+		return Configure(ConfigureOptions{})
 	case 5: // Exit
 		return nil
 	default:
@@ -175,7 +175,7 @@ func editAICLI(config *Config) error {
 	}
 
 	if provider == "configure" {
-		return Configure()
+		return Configure(ConfigureOptions{})
 	}
 
 	config.DefaultAICLI = provider

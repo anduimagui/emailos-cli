@@ -474,7 +474,7 @@ func formatEmailAsMarkdown(email *mailos.Email) string {
 func getAllCommands() []string {
 	commands := []string{
 		"setup", "local", "provider", "configure", "config", "template",
-		"draft", "drafts", "send", "sync", "sync-db", "sent", "download", "read", "reply", "forward",
+		"draft", "drafts", "compose", "send", "sync", "sync-db", "sent", "download", "read", "reply", "forward",
 		"mark-read", "accounts", "info", "test", "delete", "report",
 		"open", "stats", "docs", "commands", "tools", "interactive", "chat", "search",
 		"unsubscribe", "uninstall", "cleanup",
@@ -535,21 +535,30 @@ func showUnknownCommandHelp(unknownCmd string) {
 	
 	fmt.Printf("❌ Command '%s' not found.\n\n", unknownCmd)
 	
-	// Show suggestions if any
-	suggestions := findSimilarCommands(unknownCmd)
-	if len(suggestions) > 0 {
-		fmt.Printf("💡 Did you mean:\n")
-		for _, suggestion := range suggestions {
-			fmt.Printf("   • mailos %s\n", suggestion)
-		}
+	// Special case for compose - direct suggestion to drafts
+	if strings.EqualFold(unknownCmd, "compose") {
+		fmt.Printf("💡 For composing emails, use:\n")
+		fmt.Printf("   • mailos compose --to user@example.com --subject \"Hello\" --body \"Message\"\n")
+		fmt.Printf("   • mailos drafts (legacy command with advanced features)\n")
+		fmt.Printf("   • mailos send (for immediate sending without drafts)\n")
 		fmt.Println()
+	} else {
+		// Show suggestions if any
+		suggestions := findSimilarCommands(unknownCmd)
+		if len(suggestions) > 0 {
+			fmt.Printf("💡 Did you mean:\n")
+			for _, suggestion := range suggestions {
+				fmt.Printf("   • mailos %s\n", suggestion)
+			}
+			fmt.Println()
+		}
 	}
 	
 	fmt.Printf("📋 Available commands:\n")
 	
 	// Group commands by category for better display
 	core := []string{"setup", "configure", "info"}
-	email := []string{"read", "reply", "send", "draft", "search", "delete", "mark-read"}
+	email := []string{"read", "reply", "send", "compose", "draft", "search", "delete", "mark-read"}
 	management := []string{"sync", "sync-db", "accounts", "stats", "report", "template"}
 	interaction := []string{"interactive", "chat", "open", "unsubscribe"}
 	
@@ -599,6 +608,7 @@ func showAllCommands(verbose bool) error {
 	
 	// Draft Management
 	fmt.Printf("\n📝 DRAFT MANAGEMENT:\n")
+	fmt.Printf("  compose    - Compose a new email (alias for drafts)\n")
 	fmt.Printf("  draft      - Simplified draft management (list, edit, create)\n")
 	fmt.Printf("  drafts     - Legacy draft command with advanced features\n")
 	
@@ -733,8 +743,25 @@ and provides a consistent interface for sending and reading emails.`,
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Set up your email configuration",
+	Long: `Set up your email configuration interactively or with flags.
+
+You can specify configuration values using flags to skip interactive prompts:
+  --email           Your email address
+  --provider        Email provider (gmail, fastmail, outlook, yahoo, zoho)
+  --name            Your display name
+  --license         Your MailOS license key
+  --profile         Path to your profile image
+
+Example:
+  mailos setup --email=john@example.com --provider=gmail --name="John Doe"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.Setup()
+		email, _ := cmd.Flags().GetString("email")
+		provider, _ := cmd.Flags().GetString("provider")
+		name, _ := cmd.Flags().GetString("name")
+		license, _ := cmd.Flags().GetString("license")
+		profile, _ := cmd.Flags().GetString("profile")
+		
+		return mailos.SetupWithFlags(email, provider, name, profile, license)
 	},
 }
 
@@ -775,34 +802,26 @@ var configureCmd = &cobra.Command{
 	Short: "Manage email configuration (global or local)",
 	Long:  `Configure email settings. By default modifies global configuration (~/.email/).
 Use --local flag to create/modify project-specific configuration (.email/)`,
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		return mailos.EnsureInitializedInteractive()
-	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		quick, _ := cmd.Flags().GetBool("quick")
-		_, _ = cmd.Flags().GetBool("local")
-		_, _ = cmd.Flags().GetString("email")
-		_, _ = cmd.Flags().GetString("provider")
-		_, _ = cmd.Flags().GetString("name")
-		_, _ = cmd.Flags().GetString("from")
-		_, _ = cmd.Flags().GetString("ai")
-		
-		if quick {
-			// return mailos.QuickConfigMenu()
-			return fmt.Errorf("quick config functionality temporarily disabled")
-		}
+		isLocal, _ := cmd.Flags().GetBool("local")
+		email, _ := cmd.Flags().GetString("email")
+		provider, _ := cmd.Flags().GetString("provider")
+		name, _ := cmd.Flags().GetString("name")
+		from, _ := cmd.Flags().GetString("from")
+		aiCLI, _ := cmd.Flags().GetString("ai")
 		
 		// Pass command-line arguments to Configure
-		// opts := mailos.ConfigureOptions{
-		//	Email:    email,
-		//	Provider: provider,
-		//	Name:     name,
-		//	From:     from,
-		//	AICLI:    aiCLI,
-		//	IsLocal:  isLocal,
-		// }
-		// return mailos.ConfigureWithOptions(opts)
-		return fmt.Errorf("configuration functionality temporarily disabled")
+		opts := mailos.ConfigureOptions{
+			Email:    email,
+			Provider: provider,
+			Name:     name,
+			From:     from,
+			AICLI:    aiCLI,
+			IsLocal:  isLocal,
+			Quick:    quick,
+		}
+		return mailos.Configure(opts)
 	},
 }
 
@@ -983,6 +1002,86 @@ Drafts are saved to the .email/drafts folder and can be sent using 'mailos send 
 	},
 }
 
+var composeCmd = &cobra.Command{
+	Use:   "compose",
+	Short: "Compose a new email (alias for drafts)",
+	Long: `Compose a new email by creating a draft. This command is an alias for the drafts command
+and supports all the same flags and functionality. The draft will be saved locally and 
+can be sent using 'mailos send --drafts'.
+
+Examples:
+  mailos compose --to user@example.com --subject "Hello" --body "Hi there!"
+  mailos compose --interactive
+  mailos compose --template newsletter --data contacts.csv
+  
+Note: This command creates drafts that can be reviewed before sending. Use 'mailos send'
+for immediate sending without creating drafts.`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return mailos.EnsureInitialized()
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println("📝 Composing email using drafts system...")
+		
+		accountEmail, _ := cmd.Flags().GetString("account")
+		
+		cfg, err := mailos.EnsureAuthenticated(accountEmail)
+		if err != nil {
+			return err
+		}
+		_ = cfg
+
+		query := strings.Join(args, " ")
+		template, _ := cmd.Flags().GetString("template")
+		dataFile, _ := cmd.Flags().GetString("data")
+		outputDir, _ := cmd.Flags().GetString("output")
+		interactive, _ := cmd.Flags().GetBool("interactive")
+		useAI, _ := cmd.Flags().GetBool("ai")
+		count, _ := cmd.Flags().GetInt("count")
+		
+		to, _ := cmd.Flags().GetStringSlice("to")
+		cc, _ := cmd.Flags().GetStringSlice("cc")
+		bcc, _ := cmd.Flags().GetStringSlice("bcc")
+		subject, _ := cmd.Flags().GetString("subject")
+		body, _ := cmd.Flags().GetString("body")
+		file, _ := cmd.Flags().GetString("file")
+		attachments, _ := cmd.Flags().GetStringSlice("attach")
+		priority, _ := cmd.Flags().GetString("priority")
+		plain, _ := cmd.Flags().GetBool("plain")
+		noSignature, _ := cmd.Flags().GetBool("no-signature")
+		signature, _ := cmd.Flags().GetString("signature")
+		
+		if file != "" && body == "" {
+			content, err := os.ReadFile(file)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %v", err)
+			}
+			body = string(content)
+		}
+		
+		opts := mailos.DraftsOptions{
+			Query:       query,
+			Template:    template,
+			DataFile:    dataFile,
+			OutputDir:   outputDir,
+			Interactive: interactive,
+			UseAI:       useAI,
+			DraftCount:  count,
+			To:          to,
+			CC:          cc,
+			BCC:         bcc,
+			Subject:     subject,
+			Body:        body,
+			Attachments: attachments,
+			Priority:    priority,
+			PlainText:   plain,
+			NoSignature: noSignature,
+			Signature:   signature,
+		}
+		
+		return mailos.DraftsCommand(opts)
+	},
+}
+
 var sendCmd = &cobra.Command{
 	Use:   "send",
 	Short: "Send an email",
@@ -1004,29 +1103,29 @@ var sendCmd = &cobra.Command{
 		drafts, _ := cmd.Flags().GetBool("drafts")
 		if drafts {
 			// Process draft emails
-			_, _ = cmd.Flags().GetString("draft-dir")
-			_, _ = cmd.Flags().GetBool("dry-run")
-			_, _ = cmd.Flags().GetString("filter")
-			_, _ = cmd.Flags().GetBool("confirm")
-			_, _ = cmd.Flags().GetBool("delete-after")
-			_, _ = cmd.Flags().GetString("log-file")
+			draftDir, _ := cmd.Flags().GetString("draft-dir")
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			filter, _ := cmd.Flags().GetString("filter")
+			confirm, _ := cmd.Flags().GetBool("confirm")
+			deleteAfter, _ := cmd.Flags().GetBool("delete-after")
+			logFile, _ := cmd.Flags().GetString("log-file")
 			
-			// opts := mailos.SendDraftsOptions{
-			//	DraftDir:    draftDir,
-			//	DryRun:      dryRun,
-			//	Filter:      filter,
-			//	Confirm:     confirm,
-			//	DeleteAfter: deleteAfter,
-			//	LogFile:     logFile,
-			// }
-			// return mailos.SendDrafts(opts)
-			return fmt.Errorf("send drafts functionality temporarily disabled")
+			opts := mailos.SendDraftsOptions{
+				DraftDir:    draftDir,
+				DryRun:      dryRun,
+				Filter:      filter,
+				Confirm:     confirm,
+				DeleteAfter: deleteAfter,
+				LogFile:     logFile,
+			}
+			return mailos.SendDrafts(opts)
 		}
 		
 		// Regular send command
 		to, _ := cmd.Flags().GetStringSlice("to")
 		cc, _ := cmd.Flags().GetStringSlice("cc")
 		bcc, _ := cmd.Flags().GetStringSlice("bcc")
+		group, _ := cmd.Flags().GetString("group")
 		subject, _ := cmd.Flags().GetString("subject")
 		body, _ := cmd.Flags().GetString("body")
 		message, _ := cmd.Flags().GetString("message")
@@ -1047,8 +1146,17 @@ var sendCmd = &cobra.Command{
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
+		// Handle group parameter
+		if group != "" {
+			groupEmails, err := mailos.GetGroupEmails(group)
+			if err != nil {
+				return fmt.Errorf("failed to get group emails: %v", err)
+			}
+			to = append(to, groupEmails...)
+		}
+
 		if len(to) == 0 {
-			return fmt.Errorf("at least one recipient is required")
+			return fmt.Errorf("at least one recipient is required (use --to or --group)")
 		}
 
 		if subject == "" {
@@ -1083,32 +1191,39 @@ var sendCmd = &cobra.Command{
 		var sig string
 		if !noSignature {
 			if signature != "" {
-				sig = signature
+				// Process newline characters in custom signature
+				sig = strings.ReplaceAll(signature, "\\n", "\n")
+				sig = strings.ReplaceAll(sig, "\\t", "\t")
 			} else {
 				// Get account-specific config instead of global config
-				setup, err := mailos.InitializeMailSetup(from)
+				// Use accountEmail from --account flag if from is not specified
+				signatureFromAccount := from
+				if signatureFromAccount == "" {
+					signatureFromAccount = accountEmail
+				}
+				setup, err := mailos.InitializeMailSetup(signatureFromAccount)
 				if err == nil {
 					cfg := setup.Config
 					if verbose {
 						fmt.Printf("Debug: SignatureOverride = '%s'\n", cfg.SignatureOverride)
 					}
-					// For wildcard aliases, don't include signature unless explicitly set
-					if verbose {
-						fmt.Printf("Debug: cfg.FromEmail = '%s', cfg.Email = '%s'\n", cfg.FromEmail, cfg.Email)
-					}
-					if cfg.FromEmail != cfg.Email {
-						// This is a wildcard alias - no automatic signature
+					// Check for signature override first (works for all accounts)
+					if cfg.SignatureOverride != "" {
 						if verbose {
-							fmt.Printf("Debug: Wildcard alias detected - no signature\n")
+							fmt.Printf("Debug: Using account signature override\n")
 						}
-						sig = ""
+						sig = cfg.SignatureOverride
 					} else {
-						// Check for signature override for non-wildcard accounts
-						if cfg.SignatureOverride != "" {
+						// For wildcard aliases, don't include automatic signature unless explicitly set
+						if verbose {
+							fmt.Printf("Debug: cfg.FromEmail = '%s', cfg.Email = '%s'\n", cfg.FromEmail, cfg.Email)
+						}
+						if cfg.FromEmail != cfg.Email {
+							// This is a wildcard alias - no automatic signature
 							if verbose {
-								fmt.Printf("Debug: Using signature override\n")
+								fmt.Printf("Debug: Wildcard alias detected - no automatic signature\n")
 							}
-							sig = cfg.SignatureOverride
+							sig = ""
 						} else {
 							// Use FromEmail if specified, otherwise use Email
 							emailToShow := cfg.Email
@@ -1152,12 +1267,35 @@ var sendCmd = &cobra.Command{
 		}
 
 		if preview {
-			return mailos.PreviewEmail(msg, from)
+			// Use accountEmail from --account flag if from is not specified
+			previewFromAccount := from
+			if previewFromAccount == "" {
+				previewFromAccount = accountEmail
+			}
+			return mailos.PreviewEmail(msg, previewFromAccount)
 		}
 
 		if dryRun {
+			// Use accountEmail from --account flag if from is not specified  
+			dryRunFromAccount := from
+			if dryRunFromAccount == "" {
+				dryRunFromAccount = accountEmail
+			}
+			
+			// If still empty, try to get from the mail setup
+			if dryRunFromAccount == "" {
+				setup, err := mailos.InitializeMailSetup("")
+				if err == nil {
+					if setup.Config.FromEmail != "" {
+						dryRunFromAccount = setup.Config.FromEmail
+					} else {
+						dryRunFromAccount = setup.Config.Email
+					}
+				}
+			}
+			
 			fmt.Printf("=== DRY RUN - Email Preview ===\n")
-			fmt.Printf("From: %s\n", from)
+			fmt.Printf("From: %s\n", dryRunFromAccount)
 			fmt.Printf("To: %s\n", strings.Join(to, ", "))
 			if len(cc) > 0 {
 				fmt.Printf("CC: %s\n", strings.Join(cc, ", "))
@@ -1177,17 +1315,71 @@ var sendCmd = &cobra.Command{
 
 		fmt.Printf("Sending email to %s...\n", strings.Join(to, ", "))
 		
-		if verbose {
-			fmt.Printf("Debug: From address: %s\n", from)
-			fmt.Printf("Debug: Account lookup starting for: %s\n", from)
+		// Use accountEmail from --account flag if from is not specified
+		sendFromAccount := from
+		if sendFromAccount == "" {
+			sendFromAccount = accountEmail
 		}
 		
-		if err := mailos.SendWithAccountVerbose(msg, from, verbose); err != nil {
+		if verbose {
+			fmt.Printf("Debug: From address: %s\n", sendFromAccount)
+			fmt.Printf("Debug: Account lookup starting for: %s\n", sendFromAccount)
+		}
+		
+		if err := mailos.SendWithAccountVerbose(msg, sendFromAccount, verbose); err != nil {
 			return fmt.Errorf("failed to send email: %v", err)
 		}
 
 		fmt.Println("✓ Email sent successfully!")
 		return nil
+	},
+}
+
+var groupsCmd = &cobra.Command{
+	Use:   "groups",
+	Short: "Manage email groups for bulk sending",
+	Long:  `Manage email groups that can be used for sending emails to multiple recipients at once.
+Groups are stored in ~/.email/groups.json and can be used with the --group flag in send commands.`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return mailos.EnsureInitialized()
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		update, _ := cmd.Flags().GetString("update")
+		description, _ := cmd.Flags().GetString("description")
+		emails, _ := cmd.Flags().GetString("emails")
+		delete, _ := cmd.Flags().GetString("delete")
+		addMember, _ := cmd.Flags().GetString("add-member")
+		removeMember, _ := cmd.Flags().GetString("remove-member")
+		groupName, _ := cmd.Flags().GetString("group")
+		listMembers, _ := cmd.Flags().GetString("list-members")
+
+		if delete != "" {
+			return mailos.DeleteGroup(delete)
+		}
+
+		if update != "" {
+			return mailos.UpdateGroup(update, description, emails)
+		}
+
+		if addMember != "" {
+			if groupName == "" {
+				return fmt.Errorf("--group flag is required when adding members")
+			}
+			return mailos.AddMemberToGroup(groupName, addMember)
+		}
+
+		if removeMember != "" {
+			if groupName == "" {
+				return fmt.Errorf("--group flag is required when removing members")
+			}
+			return mailos.RemoveMemberFromGroup(groupName, removeMember)
+		}
+
+		if listMembers != "" {
+			return mailos.ListGroupMembers(listMembers)
+		}
+
+		return mailos.ListGroups()
 	},
 }
 
@@ -2779,12 +2971,12 @@ var unsubscribeCmd = &cobra.Command{
 		limit, _ := cmd.Flags().GetInt("number")
 		openLink, _ := cmd.Flags().GetBool("open")
 		autoOpen, _ := cmd.Flags().GetBool("auto-open")
+		moveToFolder, _ := cmd.Flags().GetBool("move-to-folder")
 		
-		// client, err := NewClient()
-		// if err != nil {
-		//	return err
-		// }
-		return fmt.Errorf("client functionality temporarily disabled")
+		client, err := mailos.NewClient()
+		if err != nil {
+			return err
+		}
 		
 		opts := mailos.ReadOptions{
 			FromAddress: from,
@@ -2795,7 +2987,7 @@ var unsubscribeCmd = &cobra.Command{
 		fmt.Println("Searching for unsubscribe links...")
 		
 		// First read emails
-		emails, err := mailos.Read(opts)
+		emails, err := client.ReadEmails(opts)
 		if err != nil {
 			return fmt.Errorf("failed to read emails: %v", err)
 		}
@@ -2810,6 +3002,14 @@ var unsubscribeCmd = &cobra.Command{
 		
 		// Display report
 		fmt.Print(mailos.GetUnsubscribeReport(links))
+		
+		// Move emails to folder if requested
+		if moveToFolder {
+			fmt.Println("\nMoving emails to Unsubscribe folder...")
+			if err := mailos.MoveEmailsToUnsubscribeFolder(links); err != nil {
+				fmt.Printf("Warning: Failed to move emails to folder: %v\n", err)
+			}
+		}
 		
 		// Open first link if requested
 		if (openLink || autoOpen) && len(links) > 0 && len(links[0].Links) > 0 {
@@ -2870,6 +3070,13 @@ func init() {
 	setupHelpForCommand(localCmd, "local")
 	setupHelpForCommand(sentCmd, "sent")
 	
+	// Setup command flags
+	setupCmd.Flags().String("email", "", "Your email address")
+	setupCmd.Flags().String("provider", "", "Email provider (gmail, fastmail, outlook, yahoo, zoho)")
+	setupCmd.Flags().String("name", "", "Your display name")
+	setupCmd.Flags().String("license", "", "Your MailOS license key")
+	setupCmd.Flags().String("profile", "", "Path to your profile image")
+	
 	// Accounts command flags
 	accountsCmd.Flags().String("set", "", "Set session default account")
 	accountsCmd.Flags().String("add", "", "Add a new email account")
@@ -2919,10 +3126,31 @@ func init() {
 	draftsCmd.Flags().BoolP("no-signature", "S", false, "Don't add signature")
 	draftsCmd.Flags().String("signature", "", "Custom signature")
 	
+	// Compose command flags (same as drafts)
+	composeCmd.Flags().String("account", "", "Account to use for sending")
+	composeCmd.Flags().String("template", "", "Use a template for email generation")
+	composeCmd.Flags().String("data", "", "Data file (CSV/JSON) for bulk email generation")
+	composeCmd.Flags().String("output", "", "Output directory for drafts (default: ~/.email/drafts)")
+	composeCmd.Flags().BoolP("interactive", "i", false, "Interactive mode for creating email")
+	composeCmd.Flags().Bool("ai", false, "Use AI to generate email from query")
+	composeCmd.Flags().IntP("count", "n", 1, "Number of emails to generate (with AI)")
+	composeCmd.Flags().StringSliceP("to", "t", nil, "Recipient email addresses")
+	composeCmd.Flags().StringSliceP("cc", "c", nil, "CC recipients")
+	composeCmd.Flags().StringSliceP("bcc", "B", nil, "BCC recipients")
+	composeCmd.Flags().StringP("subject", "s", "", "Email subject")
+	composeCmd.Flags().StringP("body", "b", "", "Email body (Markdown supported)")
+	composeCmd.Flags().StringP("file", "f", "", "Read body from file")
+	composeCmd.Flags().StringSliceP("attach", "a", nil, "Attachments")
+	composeCmd.Flags().String("priority", "normal", "Email priority (high/normal/low)")
+	composeCmd.Flags().BoolP("plain", "P", false, "Send as plain text only")
+	composeCmd.Flags().BoolP("no-signature", "S", false, "Don't add signature")
+	composeCmd.Flags().String("signature", "", "Custom signature")
+	
 	// Send command flags
 	sendCmd.Flags().StringSliceP("to", "t", nil, "Recipient email addresses")
 	sendCmd.Flags().StringSliceP("cc", "c", nil, "CC recipients")
 	sendCmd.Flags().StringSliceP("bcc", "B", nil, "BCC recipients")
+	sendCmd.Flags().StringP("group", "g", "", "Send to email group")
 	sendCmd.Flags().StringP("subject", "s", "", "Email subject")
 	sendCmd.Flags().StringP("body", "b", "", "Email body (Markdown supported)")
 	sendCmd.Flags().StringP("message", "m", "", "Email body (alias for --body)")
@@ -2944,6 +3172,16 @@ func init() {
 	sendCmd.Flags().Bool("confirm", false, "Confirm before sending each draft")
 	sendCmd.Flags().Bool("delete-after", true, "Delete drafts after successful sending")
 	sendCmd.Flags().String("log-file", "", "Log sent emails to file")
+
+	// Groups command flags
+	groupsCmd.Flags().String("update", "", "Create or update a group with the given name")
+	groupsCmd.Flags().String("description", "", "Description for the group")
+	groupsCmd.Flags().String("emails", "", "Comma-separated list of email addresses")
+	groupsCmd.Flags().String("delete", "", "Delete the specified group")
+	groupsCmd.Flags().String("add-member", "", "Add a member to an existing group")
+	groupsCmd.Flags().String("remove-member", "", "Remove a member from an existing group")
+	groupsCmd.Flags().String("group", "", "Group name for add/remove member operations")
+	groupsCmd.Flags().String("list-members", "", "List all members of the specified group")
 
 	// Sync command flags
 	syncCmd.Flags().String("dir", "emails", "Base directory for storing emails")
@@ -3044,6 +3282,7 @@ func init() {
 	unsubscribeCmd.Flags().IntP("number", "n", 10, "Number of emails to check")
 	unsubscribeCmd.Flags().Bool("open", false, "Open the first unsubscribe link in browser")
 	unsubscribeCmd.Flags().Bool("auto-open", false, "Automatically open unsubscribe link without prompting")
+	unsubscribeCmd.Flags().Bool("move-to-folder", false, "Move emails with unsubscribe links to dedicated IMAP folder")
 
 	// Test command flags
 	testCmd.Flags().Bool("interactive", false, "Run interactive tests")
@@ -3106,6 +3345,7 @@ func init() {
 	draftCreateCmd.Flags().StringSlice("to", nil, "Recipients")
 	draftCreateCmd.Flags().String("subject", "", "Subject")
 	draftCreateCmd.Flags().String("body", "", "Body")
+}
 
 var licenseCmd = &cobra.Command{
 	Use:   "license",
@@ -3174,6 +3414,19 @@ var licenseCmd = &cobra.Command{
 	},
 }
 
+var detectCmd = &cobra.Command{
+	Use:   "detect [email]",
+	Short: "Detect email provider for a given email address",
+	Long:  `Detect the email provider for a given email address using domain analysis and MX record lookup.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		mailos.DetectEmailProvider(email)
+		return nil
+	},
+}
+
+func init() {
 	// Add commands to root
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(localCmd)
@@ -3183,7 +3436,9 @@ var licenseCmd = &cobra.Command{
 	rootCmd.AddCommand(templateCmd)
 	rootCmd.AddCommand(draftCmd)
 	rootCmd.AddCommand(draftsCmd)
+	rootCmd.AddCommand(composeCmd)
 	rootCmd.AddCommand(sendCmd)
+	rootCmd.AddCommand(groupsCmd)
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(syncDbCmd)
 	rootCmd.AddCommand(sentCmd)
@@ -3206,6 +3461,7 @@ var licenseCmd = &cobra.Command{
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(cleanupCmd)
 	rootCmd.AddCommand(licenseCmd)
+	rootCmd.AddCommand(detectCmd)
 
 	// Add flags to license command
 	licenseCmd.Flags().Bool("verbose", false, "Show detailed session information")
@@ -3248,6 +3504,7 @@ func main() {
 	rootCmd.DisableFlagParsing = false
 	// Remove the whitelist that was hiding flag errors
 	rootCmd.FParseErrWhitelist.UnknownFlags = false
+	
 	
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

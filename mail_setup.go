@@ -35,8 +35,9 @@ func InitializeMailSetup(accountEmail string) (*MailSetup, error) {
 	// Priority order for account selection:
 	// 1. Explicitly specified account (command line --account flag)
 	// 2. Local folder preference (.email/config.json active_account)
-	// 3. Session default (MAILOS_SESSION_ACCOUNT environment variable)
-	// 4. Default config
+	// 3. Global config active_account
+	// 4. Session default (MAILOS_SESSION_ACCOUNT environment variable)
+	// 5. Default config
 	
 	if accountEmail == "" {
 		// Check for local folder preference first
@@ -44,8 +45,14 @@ func InitializeMailSetup(accountEmail string) (*MailSetup, error) {
 		if localAccount != "" {
 			accountEmail = localAccount
 		} else {
-			// Fall back to session default
-			accountEmail = GetSessionDefaultAccount()
+			// Check for global config active account
+			globalConfig, globalErr := LoadConfig()
+			if globalErr == nil && globalConfig.ActiveAccount != "" {
+				accountEmail = globalConfig.ActiveAccount
+			} else {
+				// Fall back to session default
+				accountEmail = GetSessionDefaultAccount()
+			}
 		}
 	}
 	

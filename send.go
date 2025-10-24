@@ -1,9 +1,13 @@
 package mailos
 
 import (
+	"bufio"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
+	"mime"
 	"net/smtp"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,8 +47,79 @@ type SavedEmail struct {
 	Attachments []string  `json:"attachments,omitempty"`
 }
 
+// SendDraftsOptions contains options for sending draft emails
+type SendDraftsOptions struct {
+	DraftDir    string
+	DryRun      bool
+	Filter      string
+	Confirm     bool
+	DeleteAfter bool
+	LogFile     string
+}
+
 func Send(msg *EmailMessage) error {
 	return SendWithAccount(msg, "")
+}
+
+func SendFromMarkdownFile(filePath string, accountEmail string) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %v", filePath, err)
+	}
+	
+	frontmatter, bodyContent, err := ParseFrontmatter(string(content))
+	if err != nil {
+		return fmt.Errorf("failed to parse frontmatter: %v", err)
+	}
+	
+	var msg *EmailMessage
+	if frontmatter != nil {
+		msg = frontmatter.ToEmailMessage(bodyContent)
+	} else {
+		msg = &EmailMessage{
+			Body: bodyContent,
+		}
+		if !strings.Contains(bodyContent, "<") {
+			msg.BodyHTML = MarkdownToHTMLContent(bodyContent)
+		}
+	}
+	
+	return SendWithAccount(msg, accountEmail)
+}
+
+func ProcessEmailWithFrontmatter(msg *EmailMessage) (*EmailMessage, error) {
+	if msg.Body == "" {
+		return msg, nil
+	}
+	
+	frontmatter, bodyContent, err := ParseFrontmatter(msg.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse frontmatter: %v", err)
+	}
+	
+	if frontmatter == nil {
+		return msg, nil
+	}
+	
+	processedMsg := frontmatter.ToEmailMessage(bodyContent)
+	
+	if len(msg.To) > 0 && len(processedMsg.To) == 0 {
+		processedMsg.To = msg.To
+	}
+	if len(msg.CC) > 0 && len(processedMsg.CC) == 0 {
+		processedMsg.CC = msg.CC
+	}
+	if len(msg.BCC) > 0 && len(processedMsg.BCC) == 0 {
+		processedMsg.BCC = msg.BCC
+	}
+	if msg.Subject != "" && processedMsg.Subject == "" {
+		processedMsg.Subject = msg.Subject
+	}
+	if len(msg.Attachments) > 0 && len(processedMsg.Attachments) == 0 {
+		processedMsg.Attachments = msg.Attachments
+	}
+	
+	return processedMsg, nil
 }
 
 // PreviewEmail displays the complete email content without sending it
@@ -142,8 +217,47 @@ func PreviewEmail(msg *EmailMessage, accountEmail string) error {
 	
 	message.WriteString("MIME-Version: 1.0\r\n")
 
-	// Add body
-	if bodyHTML != "" {
+	// Add body and show attachment info
+	if len(msg.Attachments) > 0 {
+		// Show attachments in preview
+		message.WriteString("Content-Type: multipart/mixed; boundary=\"preview_boundary\"\r\n")
+		message.WriteString("\r\n")
+		message.WriteString("--preview_boundary\r\n")
+		
+		if bodyHTML != "" {
+			message.WriteString("Content-Type: multipart/alternative; boundary=\"alt_boundary\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString("--alt_boundary\r\n")
+			message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString(body)
+			message.WriteString("\r\n")
+			message.WriteString("--alt_boundary\r\n")
+			message.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString(bodyHTML)
+			message.WriteString("\r\n")
+			message.WriteString("--alt_boundary--\r\n")
+		} else {
+			message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString(body)
+			message.WriteString("\r\n")
+		}
+
+		// Add attachment info (not actual data in preview)
+		for _, attachmentPath := range msg.Attachments {
+			filename := filepath.Base(attachmentPath)
+			message.WriteString("--preview_boundary\r\n")
+			message.WriteString(fmt.Sprintf("Content-Type: application/octet-stream\r\n"))
+			message.WriteString("Content-Transfer-Encoding: base64\r\n")
+			message.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", filename))
+			message.WriteString("\r\n")
+			message.WriteString(fmt.Sprintf("[ATTACHMENT: %s - file will be included when sent]\r\n", filename))
+		}
+		message.WriteString("--preview_boundary--\r\n")
+	} else if bodyHTML != "" {
+		// No attachments, but has HTML
 		boundary := fmt.Sprintf("==boundary_%d==", time.Now().Unix())
 		message.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", boundary))
 		message.WriteString("\r\n")
@@ -164,6 +278,7 @@ func PreviewEmail(msg *EmailMessage, accountEmail string) error {
 
 		message.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 	} else {
+		// Plain text only, no attachments
 		message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
 		message.WriteString("\r\n")
 		message.WriteString(body)
@@ -189,9 +304,36 @@ func SendWithAccount(msg *EmailMessage, accountEmail string) error {
 
 // sendWithAccount is the internal implementation
 func sendWithAccount(msg *EmailMessage, accountEmail string, verbose bool) error {
-	// For now, we'll skip attachment support in the simple implementation
+	processedMsg, err := ProcessEmailWithFrontmatter(msg)
+	if err != nil {
+		return fmt.Errorf("failed to process frontmatter: %v", err)
+	}
+	msg = processedMsg
+
+	// Process attachments if provided
+	var attachmentData map[string][]byte
 	if len(msg.Attachments) > 0 {
-		return fmt.Errorf("attachment support not yet implemented")
+		attachmentData = make(map[string][]byte)
+		for _, attachmentPath := range msg.Attachments {
+			// Check if file exists
+			if _, err := os.Stat(attachmentPath); os.IsNotExist(err) {
+				return fmt.Errorf("attachment file not found: %s", attachmentPath)
+			}
+			
+			// Read file data
+			data, err := os.ReadFile(attachmentPath)
+			if err != nil {
+				return fmt.Errorf("failed to read attachment %s: %v", attachmentPath, err)
+			}
+			
+			// Store using filename as key
+			filename := filepath.Base(attachmentPath)
+			attachmentData[filename] = data
+			
+			if verbose {
+				fmt.Printf("Debug: Added attachment: %s (%d bytes)\n", filename, len(data))
+			}
+		}
 	}
 
 	// Initialize mail setup with optional account
@@ -293,9 +435,75 @@ func sendWithAccount(msg *EmailMessage, accountEmail string, verbose bool) error
 	
 	message.WriteString("MIME-Version: 1.0\r\n")
 
-	// Add body
-	if bodyHTML != "" {
-		// Multipart message with HTML and plain text
+	// Add body and attachments
+	if len(attachmentData) > 0 {
+		// Mixed multipart for attachments
+		mixedBoundary := fmt.Sprintf("==mixed_%d==", time.Now().Unix())
+		message.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", mixedBoundary))
+		message.WriteString("\r\n")
+
+		// Add the email body part
+		message.WriteString(fmt.Sprintf("--%s\r\n", mixedBoundary))
+		
+		if bodyHTML != "" {
+			// Alternative part for text/html
+			altBoundary := fmt.Sprintf("==alt_%d==", time.Now().Unix())
+			message.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", altBoundary))
+			message.WriteString("\r\n")
+
+			// Plain text part
+			message.WriteString(fmt.Sprintf("--%s\r\n", altBoundary))
+			message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString(body)
+			message.WriteString("\r\n")
+
+			// HTML part
+			message.WriteString(fmt.Sprintf("--%s\r\n", altBoundary))
+			message.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString(bodyHTML)
+			message.WriteString("\r\n")
+
+			message.WriteString(fmt.Sprintf("--%s--\r\n", altBoundary))
+		} else {
+			// Plain text only
+			message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+			message.WriteString("\r\n")
+			message.WriteString(body)
+			message.WriteString("\r\n")
+		}
+
+		// Add attachments
+		for filename, data := range attachmentData {
+			message.WriteString(fmt.Sprintf("--%s\r\n", mixedBoundary))
+			
+			// Detect MIME type
+			mimeType := mime.TypeByExtension(filepath.Ext(filename))
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			
+			message.WriteString(fmt.Sprintf("Content-Type: %s\r\n", mimeType))
+			message.WriteString("Content-Transfer-Encoding: base64\r\n")
+			message.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", filename))
+			message.WriteString("\r\n")
+			
+			// Encode in base64
+			encoded := base64.StdEncoding.EncodeToString(data)
+			// Split into 76-character lines as per RFC 2045
+			for i := 0; i < len(encoded); i += 76 {
+				end := i + 76
+				if end > len(encoded) {
+					end = len(encoded)
+				}
+				message.WriteString(encoded[i:end] + "\r\n")
+			}
+		}
+
+		message.WriteString(fmt.Sprintf("--%s--\r\n", mixedBoundary))
+	} else if bodyHTML != "" {
+		// No attachments, but has HTML - multipart/alternative
 		boundary := fmt.Sprintf("==boundary_%d==", time.Now().Unix())
 		message.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", boundary))
 		message.WriteString("\r\n")
@@ -316,7 +524,7 @@ func sendWithAccount(msg *EmailMessage, accountEmail string, verbose bool) error
 
 		message.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 	} else {
-		// Plain text only
+		// Plain text only, no attachments
 		message.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
 		message.WriteString("\r\n")
 		message.WriteString(body)
@@ -452,7 +660,182 @@ func saveToSentFolder(messageContent string, config *Config, msg *EmailMessage, 
 		return nil
 	}
 
+	// Verify the email was saved to sent folder
+	if err := verifySentEmail(msg, config); err != nil {
+		fmt.Printf("Warning: Could not verify email was saved to sent folder: %v\n", err)
+	} else {
+		fmt.Println("✓ Email confirmed in sent folder")
+	}
+
 	return nil
+}
+
+// verifySentEmail checks that the sent email appears in the sent folder and validates delivery
+func verifySentEmail(msg *EmailMessage, config *Config) error {
+	// Wait a moment for the email to appear in the sent folder
+	time.Sleep(2 * time.Second)
+	
+	// Search for the email in sent folder using subject and recent timestamp
+	opts := SentOptions{
+		Limit:   5,
+		Subject: msg.Subject,
+		Since:   time.Now().Add(-5 * time.Minute), // Look for emails sent in last 5 minutes
+	}
+	
+	sentEmails, err := ReadSentEmails(opts)
+	if err != nil {
+		return fmt.Errorf("failed to read sent emails for verification: %v", err)
+	}
+	
+	// Check if any of the found emails match our sent email
+	emailFound := false
+	for _, email := range sentEmails {
+		if email.Subject == msg.Subject {
+			// Additional checks to ensure it's the right email
+			if len(msg.To) > 0 && len(email.To) > 0 {
+				// Check if at least one recipient matches
+				for _, sentTo := range msg.To {
+					for _, emailTo := range email.To {
+						if strings.Contains(emailTo, sentTo) || strings.Contains(sentTo, emailTo) {
+							emailFound = true
+							break
+						}
+					}
+					if emailFound {
+						break
+					}
+				}
+			} else {
+				// If no To addresses to compare, just match on subject and recent time
+				emailFound = true
+			}
+		}
+		if emailFound {
+			break
+		}
+	}
+	
+	if !emailFound {
+		return fmt.Errorf("sent email not found in sent folder")
+	}
+	
+	// Check for bounce notifications
+	if err := checkForBounces(msg, config); err != nil {
+		return fmt.Errorf("delivery verification failed: %v", err)
+	}
+	
+	return nil
+}
+
+// checkForBounces checks the inbox for bounce notifications related to the sent email
+func checkForBounces(msg *EmailMessage, config *Config) error {
+	// Wait additional time for potential bounces to arrive
+	time.Sleep(3 * time.Second)
+	
+	// Read recent emails from inbox to check for bounces
+	readOpts := ReadOptions{
+		Limit:       10,
+		FromAddress: "Mail Delivery System", // Common bounce sender
+		Since:       time.Now().Add(-10 * time.Minute),
+	}
+	
+	inboxEmails, err := Read(readOpts)
+	if err != nil {
+		// If we can't read inbox, don't fail verification - just warn
+		fmt.Printf("Note: Could not check for bounces: %v\n", err)
+		return nil
+	}
+	
+	// Check for bounce notifications that match our recipients
+	for _, email := range inboxEmails {
+		if isBounceNotification(email, msg) {
+			// Extract failed recipients from bounce message
+			failedRecipients := extractFailedRecipients(email, msg.To)
+			if len(failedRecipients) > 0 {
+				return fmt.Errorf("email delivery failed for: %s", strings.Join(failedRecipients, ", "))
+			}
+		}
+	}
+	
+	// Also check for bounces from common bounce senders
+	bounceFromAddresses := []string{
+		"mailer-daemon",
+		"postmaster",
+		"noreply",
+		"Mail Delivery System",
+		"Mail Delivery Subsystem",
+	}
+	
+	for _, bounceFrom := range bounceFromAddresses {
+		readOpts.FromAddress = bounceFrom
+		bounceEmails, err := Read(readOpts)
+		if err != nil {
+			continue // Skip if can't read with this sender
+		}
+		
+		for _, email := range bounceEmails {
+			if isBounceNotification(email, msg) {
+				failedRecipients := extractFailedRecipients(email, msg.To)
+				if len(failedRecipients) > 0 {
+					return fmt.Errorf("email delivery failed for: %s", strings.Join(failedRecipients, ", "))
+				}
+			}
+		}
+	}
+	
+	return nil
+}
+
+// isBounceNotification checks if an email is a bounce notification for our sent message
+func isBounceNotification(email *Email, sentMsg *EmailMessage) bool {
+	// Check common bounce indicators in subject
+	bounceIndicators := []string{
+		"Undelivered Mail Returned to Sender",
+		"Delivery Status Notification",
+		"Mail delivery failed",
+		"Returned mail",
+		"Message not delivered",
+		"Delivery failure",
+		"Undeliverable:",
+		"Failed:",
+	}
+	
+	subjectLower := strings.ToLower(email.Subject)
+	for _, indicator := range bounceIndicators {
+		if strings.Contains(subjectLower, strings.ToLower(indicator)) {
+			// Check if bounce refers to our original message
+			bodyLower := strings.ToLower(email.Body)
+			
+			// Look for our original subject in the bounce message
+			if strings.Contains(bodyLower, strings.ToLower(sentMsg.Subject)) {
+				return true
+			}
+			
+			// Look for our recipients in the bounce message
+			for _, recipient := range sentMsg.To {
+				if strings.Contains(bodyLower, strings.ToLower(recipient)) {
+					return true
+				}
+			}
+		}
+	}
+	
+	return false
+}
+
+// extractFailedRecipients extracts the failed recipient addresses from a bounce message
+func extractFailedRecipients(bounceEmail *Email, originalRecipients []string) []string {
+	var failedRecipients []string
+	bodyLower := strings.ToLower(bounceEmail.Body)
+	
+	// Check each original recipient to see if it's mentioned in the bounce
+	for _, recipient := range originalRecipients {
+		if strings.Contains(bodyLower, strings.ToLower(recipient)) {
+			failedRecipients = append(failedRecipients, recipient)
+		}
+	}
+	
+	return failedRecipients
 }
 
 // saveToLocalSentFolder saves the email to the local .email/sent directory
@@ -622,4 +1005,259 @@ func handleSendError(err error, fromEmail, configEmail string) error {
 func MarkdownToHTMLContent(markdown string) string {
 	html := blackfriday.Run([]byte(markdown))
 	return string(html)
+}
+
+// SendDrafts processes and sends all draft emails from the drafts folder
+func SendDrafts(opts SendDraftsOptions) error {
+	// Set default draft directory
+	if opts.DraftDir == "" {
+		draftsDir, err := GetDraftsDir()
+		if err != nil {
+			return fmt.Errorf("failed to get drafts directory: %v", err)
+		}
+		opts.DraftDir = draftsDir
+	}
+
+	// Check if draft directory exists
+	if _, err := os.Stat(opts.DraftDir); os.IsNotExist(err) {
+		return fmt.Errorf("draft directory does not exist: %s", opts.DraftDir)
+	}
+
+	// Get all markdown files in the draft directory
+	pattern := filepath.Join(opts.DraftDir, "*.md")
+	draftFiles, err := filepath.Glob(pattern)
+	if err != nil {
+		return fmt.Errorf("failed to list draft files: %v", err)
+	}
+
+	if len(draftFiles) == 0 {
+		fmt.Printf("No draft files found in %s/\n", opts.DraftDir)
+		return nil
+	}
+
+	fmt.Printf("Found %d draft(s) to process\n", len(draftFiles))
+
+	// Confirm before sending if requested
+	if opts.Confirm && !opts.DryRun {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Send all drafts? (y/n): ")
+		response, _ := reader.ReadString('\n')
+		if strings.ToLower(strings.TrimSpace(response)) != "y" {
+			fmt.Println("Cancelled")
+			return nil
+		}
+	}
+
+	// Create failed directory if needed
+	failedDir := filepath.Join(opts.DraftDir, "failed")
+	if !opts.DryRun {
+		os.MkdirAll(failedDir, 0755)
+	}
+
+	// Process each draft
+	successCount := 0
+	failCount := 0
+	
+	for i, draftFile := range draftFiles {
+		fmt.Printf("\n[%d/%d] Processing: %s\n", i+1, len(draftFiles), filepath.Base(draftFile))
+		
+		// Parse the draft file using our enhanced frontmatter parser
+		draft, err := parseDraftFileWithFrontmatter(draftFile)
+		if err != nil {
+			fmt.Printf("  ❌ Failed to parse: %v\n", err)
+			failCount++
+			continue
+		}
+
+		// Apply filter if specified
+		if opts.Filter != "" && !matchesFilter(draft, opts.Filter) {
+			fmt.Println("  ⏭️  Skipped (doesn't match filter)")
+			continue
+		}
+
+		// Check if scheduled for later
+		if draft.SendAfter != nil && draft.SendAfter.After(time.Now()) {
+			fmt.Printf("  ⏰ Scheduled for later: %s\n", draft.SendAfter.Format("Jan 2, 3:04 PM"))
+			continue
+		}
+
+		// Dry run mode - just show what would be sent
+		if opts.DryRun {
+			fmt.Printf("  📧 Would send to: %s\n", strings.Join(draft.To, ", "))
+			fmt.Printf("     Subject: %s\n", draft.Subject)
+			if len(draft.CC) > 0 {
+				fmt.Printf("     CC: %s\n", strings.Join(draft.CC, ", "))
+			}
+			successCount++
+			continue
+		}
+
+		// Load config to get signature settings
+		config, err := LoadConfig()
+		if err != nil {
+			fmt.Printf("  ⚠️  Warning: Could not load config for signature: %v\n", err)
+		}
+
+		// Create email message
+		msg := &EmailMessage{
+			To:          draft.To,
+			CC:          draft.CC,
+			BCC:         draft.BCC,
+			Subject:     draft.Subject,
+			Body:        draft.Body,
+			Attachments: draft.Attachments,
+			InReplyTo:   draft.InReplyTo,
+			References:  draft.References,
+		}
+
+		// Add signature if config loaded successfully
+		if config != nil {
+			var sig string
+			// Check for signature override first
+			if config.SignatureOverride != "" {
+				sig = config.SignatureOverride
+			} else {
+				// Use FromEmail if specified, otherwise use Email
+				emailToShow := config.Email
+				if config.FromEmail != "" {
+					emailToShow = config.FromEmail
+				}
+				name := config.FromName
+				if name == "" {
+					name = strings.Split(emailToShow, "@")[0]
+				}
+				sig = fmt.Sprintf("\n--\n%s\n%s", name, emailToShow)
+			}
+			msg.IncludeSignature = true
+			msg.SignatureText = sig
+		}
+
+		// Convert markdown to HTML
+		if !strings.Contains(draft.Body, "<html>") {
+			msg.BodyHTML = MarkdownToHTMLContent(draft.Body)
+		}
+
+		// Send the email
+		err = Send(msg)
+		if err != nil {
+			fmt.Printf("  ❌ Failed to send: %v\n", err)
+			// Move to failed directory
+			failedPath := filepath.Join(failedDir, filepath.Base(draftFile))
+			os.Rename(draftFile, failedPath)
+			failCount++
+			continue
+		}
+
+		fmt.Printf("  ✅ Sent successfully!\n")
+		successCount++
+
+		// Log the sent email
+		if opts.LogFile != "" {
+			logSentEmail(opts.LogFile, draft, draftFile)
+		}
+
+		// Delete the draft file if requested (default behavior)
+		if opts.DeleteAfter {
+			os.Remove(draftFile)
+		} else {
+			// Move to sent directory
+			sentDir := filepath.Join(opts.DraftDir, "sent")
+			os.MkdirAll(sentDir, 0755)
+			sentPath := filepath.Join(sentDir, filepath.Base(draftFile))
+			os.Rename(draftFile, sentPath)
+		}
+	}
+
+	// Summary
+	fmt.Printf("\n📊 Summary:\n")
+	fmt.Printf("  ✅ Sent: %d\n", successCount)
+	if failCount > 0 {
+		fmt.Printf("  ❌ Failed: %d (moved to %s/)\n", failCount, failedDir)
+	}
+	
+	return nil
+}
+
+// parseDraftFileWithFrontmatter reads and parses a markdown draft file using enhanced frontmatter
+func parseDraftFileWithFrontmatter(filePath string) (*DraftEmail, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use our enhanced frontmatter parser
+	frontmatter, bodyContent, err := ParseFrontmatter(string(content))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse frontmatter: %v", err)
+	}
+
+	var draft *DraftEmail
+	if frontmatter != nil {
+		// Convert frontmatter to draft
+		draftFromFM := frontmatter.ToDraftEmail(bodyContent)
+		draft = &draftFromFM
+	} else {
+		// No frontmatter, treat entire content as body
+		draft = &DraftEmail{
+			Body: bodyContent,
+		}
+	}
+	
+	// Validate required fields
+	if len(draft.To) == 0 {
+		return nil, fmt.Errorf("draft missing 'to' field")
+	}
+	if draft.Subject == "" {
+		return nil, fmt.Errorf("draft missing 'subject' field")
+	}
+	
+	return draft, nil
+}
+
+// matchesFilter checks if a draft matches the filter criteria
+func matchesFilter(draft *DraftEmail, filter string) bool {
+	// Parse filter (e.g., "priority:high" or "to:*@example.com")
+	parts := strings.SplitN(filter, ":", 2)
+	if len(parts) != 2 {
+		return true
+	}
+	
+	key := strings.ToLower(parts[0])
+	value := strings.ToLower(parts[1])
+	
+	switch key {
+	case "priority":
+		return strings.ToLower(draft.Priority) == value
+	case "to":
+		for _, to := range draft.To {
+			if strings.Contains(strings.ToLower(to), value) {
+				return true
+			}
+		}
+		return false
+	case "subject":
+		return strings.Contains(strings.ToLower(draft.Subject), value)
+	default:
+		return true
+	}
+}
+
+// logSentEmail logs a sent email to a file
+func logSentEmail(logFile string, draft *DraftEmail, draftFile string) error {
+	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logEntry := fmt.Sprintf("[%s] Sent: %s | To: %s | From draft: %s\n",
+		timestamp,
+		draft.Subject,
+		strings.Join(draft.To, ", "),
+		filepath.Base(draftFile),
+	)
+	
+	_, err = file.WriteString(logEntry)
+	return err
 }

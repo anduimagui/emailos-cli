@@ -171,7 +171,7 @@ type Config struct {
 ## Testing Best Practices
 
 1. Always test with actual mailos commands, not external scripts
-2. Use `andrew@happysoft.dev` for test emails
+2. Use `andremg212@gmail.com` for test emails
 3. Test both global and local configuration scenarios
 4. Verify IMAP draft synchronization works
 5. Test cross-platform build compatibility

@@ -14,6 +14,10 @@ import (
 )
 
 func Setup() error {
+	return SetupWithFlags("", "", "", "", "")
+}
+
+func SetupWithFlags(email, provider, fromName, profileImage, licenseKey string) error {
 	// Check if running in AI environment and provide appropriate guidance
 	if isAIEnvironment() {
 		fmt.Println("MailOS Setup - AI Environment Detected")
@@ -22,9 +26,22 @@ func Setup() error {
 		fmt.Println("You appear to be running MailOS setup from an AI CLI environment.")
 		fmt.Println("Interactive setup requires a regular terminal session.")
 		fmt.Println()
+		fmt.Println("BEFORE YOU BEGIN SETUP, HAVE READY:")
+		fmt.Println("• Your email address")
+		fmt.Println("• An app-specific password (NOT your regular password)")
+		fmt.Println("• Your MailOS license key")
+		fmt.Println("• Display name (optional)")
+		fmt.Println("• Profile image path (optional)")
+		fmt.Println()
 		fmt.Println("To complete MailOS setup:")
 		fmt.Println("1. Open a regular terminal/command prompt")
 		fmt.Println("2. Run: mailos setup")
+		fmt.Println("   Optional flags:")
+		fmt.Println("   --email=your@email.com")
+		fmt.Println("   --provider=gmail|fastmail|outlook|yahoo|zoho")
+		fmt.Println("   --name=\"Your Name\"")
+		fmt.Println("   --license=your-license-key")
+		fmt.Println("   --profile=/path/to/image.jpg")
 		fmt.Println("3. Follow the interactive configuration wizard")
 		fmt.Println("4. Once configured, return to this AI environment")
 		fmt.Println()
@@ -70,21 +87,33 @@ func Setup() error {
 	fmt.Println()
 
 	reader := bufio.NewReader(os.Stdin)
-	var licenseKey string
+	var actualLicenseKey string
 	validLicense := false
 
-	// Try to load existing license from config
-	if existingConfig, err := LoadConfig(); err == nil && existingConfig.LicenseKey != "" {
+	// Use provided license key or try to load existing license from config
+	if licenseKey != "" {
+		actualLicenseKey = licenseKey
+		fmt.Printf("Using provided license key: %s...\n", actualLicenseKey[:min(8, len(actualLicenseKey))])
+		fmt.Println("Validating provided license...")
+		lm := GetLicenseManager()
+		if err := lm.ValidateLicense(actualLicenseKey); err == nil {
+			validLicense = true
+			fmt.Println(successStyle.Render("✓ License validated successfully!"))
+		} else {
+			fmt.Println(errorStyle.Render("✗ Invalid license key"))
+			fmt.Println("Please enter a valid license key interactively.")
+		}
+	} else if existingConfig, err := LoadConfig(); err == nil && existingConfig.LicenseKey != "" {
 		fmt.Printf("Found existing license key: %s...\n", existingConfig.LicenseKey[:min(8, len(existingConfig.LicenseKey))])
 		fmt.Print("Use existing license? (Y/n): ")
 		useExisting, _ := reader.ReadString('\n')
 		useExisting = strings.TrimSpace(strings.ToLower(useExisting))
 
 		if useExisting != "n" && useExisting != "no" {
-			licenseKey = existingConfig.LicenseKey
+			actualLicenseKey = existingConfig.LicenseKey
 			fmt.Println("Validating existing license...")
 			lm := GetLicenseManager()
-			if err := lm.ValidateLicense(licenseKey); err == nil {
+			if err := lm.ValidateLicense(actualLicenseKey); err == nil {
 				validLicense = true
 				fmt.Println(successStyle.Render("✓ License validated successfully!"))
 			} else {
@@ -97,10 +126,10 @@ func Setup() error {
 	// Get new license key if needed
 	for !validLicense {
 		fmt.Print(promptStyle.Render("\nEnter your license key (or press Ctrl+C to exit): "))
-		licenseKey, _ = reader.ReadString('\n')
-		licenseKey = strings.TrimSpace(licenseKey)
+		tempLicenseKey, _ := reader.ReadString('\n')
+		tempLicenseKey = strings.TrimSpace(tempLicenseKey)
 
-		if licenseKey == "" {
+		if tempLicenseKey == "" {
 			fmt.Println(errorStyle.Render("\n✗ License key cannot be empty."))
 			fmt.Println("\nTo purchase a license, please visit:")
 			fmt.Printf(warningStyle.Render("→ https://%s/checkout\n"), APP_SITE)
@@ -119,18 +148,19 @@ func Setup() error {
 				fmt.Println("Once you have your license key, enter it below.")
 			} else {
 				// User typed something, treat it as a license key
-				licenseKey = input
+				tempLicenseKey = input
 				// Continue to validation below
 			}
 
-			if licenseKey == "" {
+			if tempLicenseKey == "" {
 				continue
 			}
 		}
 
+		actualLicenseKey = tempLicenseKey
 		fmt.Println("\nValidating license key...")
 		lm := GetLicenseManager()
-		if err := lm.ValidateLicense(licenseKey); err != nil {
+		if err := lm.ValidateLicense(actualLicenseKey); err != nil {
 			fmt.Println(errorStyle.Render("\n✗ Invalid license key"))
 			fmt.Println()
 			fmt.Printf(warningStyle.Render("Please visit → https://%s/checkout to purchase a valid license.\n"), APP_SITE)
@@ -176,72 +206,115 @@ func Setup() error {
 
 	// Select provider
 	providerKeys := GetProviderKeys()
-	providerNames := make([]string, len(providerKeys))
-	for i, key := range providerKeys {
-		providerNames[i] = Providers[key].Name
+	var selectedKey string
+	var emailProvider Provider
+
+	if provider != "" {
+		// Use provided provider
+		selectedKey = provider
+		if p, exists := Providers[selectedKey]; exists {
+			emailProvider = p
+			fmt.Printf("Using provided provider: %s\n", emailProvider.Name)
+		} else {
+			fmt.Printf("Invalid provider '%s'. Available providers: %v\n", provider, providerKeys)
+			return fmt.Errorf("invalid provider: %s", provider)
+		}
+	} else {
+		// Interactive provider selection
+		providerNames := make([]string, len(providerKeys))
+		for i, key := range providerKeys {
+			providerNames[i] = Providers[key].Name
+		}
+
+		prompt := promptui.Select{
+			Label: "Select your email provider",
+			Items: providerNames,
+		}
+
+		index, _, err := prompt.Run()
+		if err != nil {
+			return fmt.Errorf("provider selection cancelled: %v", err)
+		}
+
+		selectedKey = providerKeys[index]
+		emailProvider = Providers[selectedKey]
 	}
 
-	prompt := promptui.Select{
-		Label: "Select your email provider",
-		Items: providerNames,
-	}
-
-	index, _, err := prompt.Run()
-	if err != nil {
-		return fmt.Errorf("provider selection cancelled: %v", err)
-	}
-
-	selectedKey := providerKeys[index]
-	provider := Providers[selectedKey]
-
-	fmt.Printf("\n%s %s\n", successStyle.Render("You selected:"), provider.Name)
+	fmt.Printf("\n%s %s\n", successStyle.Render("You selected:"), emailProvider.Name)
 
 	// Get email address
-	var email string
-	for {
-		fmt.Print(promptStyle.Render("\nEnter your email address: "))
-		emailInput, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read email: %v", err)
-		}
-		email = strings.TrimSpace(emailInput)
-
+	var actualEmail string
+	if email != "" {
+		// Use provided email
+		actualEmail = email
+		fmt.Printf("Using provided email: %s\n", actualEmail)
 		// Validate email format
-		if !isValidEmail(email) {
-			fmt.Println("This doesn't look right. Please enter a valid email address.")
-			continue
+		if !isValidEmail(actualEmail) {
+			return fmt.Errorf("invalid email format: %s", actualEmail)
 		}
-		break
+	} else {
+		// Interactive email input
+		for {
+			fmt.Print(promptStyle.Render("\nEnter your email address: "))
+			emailInput, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read email: %v", err)
+			}
+			actualEmail = strings.TrimSpace(emailInput)
+
+			// Validate email format
+			if !isValidEmail(actualEmail) {
+				fmt.Println("This doesn't look right. Please enter a valid email address.")
+				continue
+			}
+			break
+		}
 	}
 
 	// Get from name (optional)
-	fmt.Print(promptStyle.Render("\nEnter your display name (optional, press Enter to skip): "))
-	fromName, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read display name: %v", err)
+	var actualFromName string
+	if fromName != "" {
+		// Use provided from name
+		actualFromName = fromName
+		fmt.Printf("Using provided display name: %s\n", actualFromName)
+	} else {
+		// Interactive from name input
+		fmt.Print(promptStyle.Render("\nEnter your display name (optional, press Enter to skip): "))
+		fromNameInput, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read display name: %v", err)
+		}
+		actualFromName = strings.TrimSpace(fromNameInput)
 	}
-	fromName = strings.TrimSpace(fromName)
 
 	// Get profile image path (optional)
-	fmt.Print(promptStyle.Render("\nEnter path to your profile image (optional, press Enter to skip): "))
-	profileImagePath, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read profile image path: %v", err)
+	var actualProfileImagePath string
+	if profileImage != "" {
+		// Use provided profile image
+		actualProfileImagePath = profileImage
+		fmt.Printf("Using provided profile image: %s\n", actualProfileImagePath)
+	} else {
+		// Interactive profile image input
+		fmt.Print(promptStyle.Render("\nEnter path to your profile image (optional, press Enter to skip): "))
+		profileImageInput, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read profile image path: %v", err)
+		}
+		actualProfileImagePath = strings.TrimSpace(profileImageInput)
 	}
-	profileImagePath = strings.TrimSpace(profileImagePath)
 
 	// Validate profile image if provided
-	if profileImagePath != "" {
+	if actualProfileImagePath != "" {
 		// Check if file exists
-		if _, err := os.Stat(profileImagePath); os.IsNotExist(err) {
+		if _, err := os.Stat(actualProfileImagePath); os.IsNotExist(err) {
 			fmt.Println(errorStyle.Render("✗ Profile image file not found. Skipping..."))
-			profileImagePath = ""
+			actualProfileImagePath = ""
 		} else {
 			// Convert to absolute path
-			absPath, err := filepath.Abs(profileImagePath)
+			absPath, err := filepath.Abs(actualProfileImagePath)
 			if err == nil {
-				profileImagePath = absPath
-				fmt.Printf("%s %s\n", successStyle.Render("✓ Profile image found:"), profileImagePath)
+				actualProfileImagePath = absPath
+				fmt.Printf("%s %s\n", successStyle.Render("✓ Profile image found:"), actualProfileImagePath)
 			}
 		}
 	}
@@ -268,17 +341,17 @@ func Setup() error {
 	fmt.Println("• But can't open the trunk (access account settings)")
 	fmt.Println("• You can take it back anytime (revoke access)")
 	fmt.Println()
-	fmt.Printf("%s requires an app-specific password for security.\n", provider.Name)
-	fmt.Printf("%s\n", provider.AppPasswordHelp)
+	fmt.Printf("%s requires an app-specific password for security.\n", emailProvider.Name)
+	fmt.Printf("%s\n", emailProvider.AppPasswordHelp)
 	fmt.Println()
-	fmt.Printf("Direct link: %s\n", provider.AppPasswordURL)
+	fmt.Printf("Direct link: %s\n", emailProvider.AppPasswordURL)
 	fmt.Println()
 	fmt.Print(promptStyle.Render("Press ENTER to continue (please visit the link above manually)..."))
 	reader.ReadString('\n')
 
 	// Show app password URL instead of opening browser
-	fmt.Printf("\nPlease manually visit the %s app password page:\n", provider.Name)
-	fmt.Printf("%s\n", provider.AppPasswordURL)
+	fmt.Printf("\nPlease manually visit the %s app password page:\n", emailProvider.Name)
+	fmt.Printf("%s\n", emailProvider.AppPasswordURL)
 
 	fmt.Print(promptStyle.Render("\nOnce you've generated your app password, press ENTER to continue..."))
 	reader.ReadString('\n')
@@ -298,13 +371,13 @@ func Setup() error {
 	// Create or update config, preserving existing accounts
 	config := &Config{
 		Provider:      selectedKey,
-		Email:         email,
+		Email:         actualEmail,
 		Password:      password,
-		FromName:      fromName,
-		ProfileImage:  profileImagePath,
-		LicenseKey:    licenseKey,
+		FromName:      actualFromName,
+		ProfileImage:  actualProfileImagePath,
+		LicenseKey:    actualLicenseKey,
 		DefaultAICLI:  defaultAICLI,
-		ActiveAccount: email,
+		ActiveAccount: actualEmail,
 	}
 
 	// Preserve existing accounts if they exist
@@ -314,21 +387,21 @@ func Setup() error {
 		// Check if we need to add the current account to the accounts list
 		accountExists := false
 		for _, acc := range config.Accounts {
-			if acc.Email == email {
+			if acc.Email == actualEmail {
 				accountExists = true
 				break
 			}
 		}
 
 		// Add current account if it's not already in the list
-		if !accountExists && email != "" {
+		if !accountExists && actualEmail != "" {
 			newAccount := AccountConfig{
-				Email:        email,
+				Email:        actualEmail,
 				Provider:     selectedKey,
 				Password:     password,
-				FromName:     fromName,
-				FromEmail:    email,
-				ProfileImage: profileImagePath,
+				FromName:     actualFromName,
+				FromEmail:    actualEmail,
+				ProfileImage: actualProfileImagePath,
 				Label:        "Setup Account",
 			}
 			config.Accounts = append(config.Accounts, newAccount)

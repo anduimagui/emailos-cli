@@ -7,6 +7,7 @@ package mailos
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,6 +237,17 @@ func ConfigExists() bool {
 		return false
 	}
 	_, err = os.Stat(configPath)
+	return err == nil
+}
+
+// GlobalConfigExists checks if global config exists specifically
+func GlobalConfigExists() bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+	_, err = os.Stat(globalConfigPath)
 	return err == nil
 }
 
@@ -485,7 +497,19 @@ func fileExists(path string) bool {
 // LoadAccountConfig loads configuration for a specific email account from home directory
 func LoadAccountConfig(accountEmail string) (*Config, error) {
 	if accountEmail == "" {
-		return LoadConfig()
+		// Check if there's an active account set in the config
+		config, err := LoadConfig()
+		if err != nil {
+			return nil, err
+		}
+		
+		// If active account is set, use it
+		if config.ActiveAccount != "" {
+			return LoadAccountConfig(config.ActiveAccount)
+		}
+		
+		// Otherwise return the default config
+		return config, nil
 	}
 
 	// Load home directory config
@@ -689,9 +713,13 @@ func AddNewAccount(email string) error {
 	fmt.Printf("\nSetting up account: %s\n", email)
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-	// Determine provider from email domain
-	provider := guessProviderFromEmail(email)
-	fmt.Printf("Detected provider: %s\n", provider)
+	// Determine provider from email domain with detection details
+	provider, detected, method := detectProviderFromEmail(email)
+	if detected {
+		fmt.Printf("✓ Detected provider: %s (via %s)\n", GetProviderName(provider), method)
+	} else {
+		fmt.Printf("? Using default provider: %s (unable to detect from domain/MX records)\n", GetProviderName(provider))
+	}
 	
 	// For custom domains, confirm the provider
 	domain := strings.ToLower(strings.Split(email, "@")[1])
@@ -782,8 +810,14 @@ func AddNewAccountWithProvider(email, provider string, useExistingCredentials bo
 
 	// Use specified provider or guess from email domain
 	if provider == "" {
-		provider = guessProviderFromEmail(email)
-		fmt.Printf("Detected provider: %s\n", provider)
+		var detected bool
+		var method string
+		provider, detected, method = detectProviderFromEmail(email)
+		if detected {
+			fmt.Printf("✓ Detected provider: %s (via %s)\n", GetProviderName(provider), method)
+		} else {
+			fmt.Printf("? Using default provider: %s (unable to detect from domain/MX records)\n", GetProviderName(provider))
+		}
 	} else {
 		// Validate the specified provider
 		switch strings.ToLower(provider) {
@@ -880,10 +914,38 @@ func AddNewAccountWithProvider(email, provider string, useExistingCredentials bo
 	return nil
 }
 
+// detectProviderFromMX attempts to determine the email provider from MX records
+func detectProviderFromMX(domain string) (string, bool) {
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil {
+		return "", false
+	}
+
+	for _, mx := range mxRecords {
+		mxHost := strings.ToLower(mx.Host)
+		
+		switch {
+		case strings.Contains(mxHost, "gmail.com") || strings.Contains(mxHost, "google.com") || strings.Contains(mxHost, "googlemail.com"):
+			return ProviderGmail, true
+		case strings.Contains(mxHost, "fastmail.com") || strings.Contains(mxHost, "messagingengine.com"):
+			return ProviderFastmail, true
+		case strings.Contains(mxHost, "outlook.com") || strings.Contains(mxHost, "office365.com") || strings.Contains(mxHost, "protection.outlook.com"):
+			return ProviderOutlook, true
+		case strings.Contains(mxHost, "yahoo.com") || strings.Contains(mxHost, "yahoodns.net"):
+			return ProviderYahoo, true
+		case strings.Contains(mxHost, "zoho.com") || strings.Contains(mxHost, "zohomail.com"):
+			return ProviderZoho, true
+		}
+	}
+	
+	return "", false
+}
+
 // guessProviderFromEmail attempts to determine the email provider from the email domain
 func guessProviderFromEmail(email string) string {
 	domain := strings.ToLower(strings.Split(email, "@")[1])
 	
+	// First try direct domain matching for known providers
 	switch {
 	case strings.Contains(domain, "gmail.com") || strings.Contains(domain, "googlemail.com"):
 		return ProviderGmail
@@ -895,10 +957,42 @@ func guessProviderFromEmail(email string) string {
 		return ProviderYahoo
 	case strings.Contains(domain, "zoho."):
 		return ProviderZoho
-	default:
-		// For unknown domains, default to fastmail since it works well with custom domains
-		return ProviderFastmail
 	}
+	
+	// For custom domains, try MX record detection
+	if provider, detected := detectProviderFromMX(domain); detected {
+		return provider
+	}
+	
+	// Default to fastmail since it works well with custom domains
+	return ProviderFastmail
+}
+
+// detectProviderFromEmail detects the email provider and returns both the provider and detection method
+func detectProviderFromEmail(email string) (provider string, detected bool, method string) {
+	domain := strings.ToLower(strings.Split(email, "@")[1])
+	
+	// First try direct domain matching for known providers
+	switch {
+	case strings.Contains(domain, "gmail.com") || strings.Contains(domain, "googlemail.com"):
+		return ProviderGmail, true, "domain"
+	case strings.Contains(domain, "fastmail.") || strings.Contains(domain, "fm."):
+		return ProviderFastmail, true, "domain"
+	case strings.Contains(domain, "outlook.") || strings.Contains(domain, "hotmail.") || strings.Contains(domain, "live."):
+		return ProviderOutlook, true, "domain"
+	case strings.Contains(domain, "yahoo."):
+		return ProviderYahoo, true, "domain"
+	case strings.Contains(domain, "zoho."):
+		return ProviderZoho, true, "domain"
+	}
+	
+	// For custom domains, try MX record detection
+	if provider, detected := detectProviderFromMX(domain); detected {
+		return provider, true, "MX record"
+	}
+	
+	// Default to fastmail since it works well with custom domains
+	return ProviderFastmail, false, "default"
 }
 
 // SetLocalAccountPreference sets the preferred account for the current local directory
@@ -1093,6 +1187,221 @@ func EnsureEmailDirectories() error {
 	}
 
 	return nil
+}
+
+// ConfigureOptions holds command-line options for configuration
+type ConfigureOptions struct {
+	Email    string
+	Provider string
+	Name     string
+	From     string
+	AICLI    string
+	IsLocal  bool
+	Quick    bool
+}
+
+// Configure handles email configuration with command-line options
+func Configure(opts ConfigureOptions) error {
+	if opts.IsLocal && GlobalConfigExists() {
+		// For local configurations when global config exists, skip license validation
+		return configureWithOptions(opts)
+	}
+	
+	// For global configurations or when no global config exists, ensure full initialization
+	if err := EnsureInitializedInteractive(); err != nil {
+		return err
+	}
+	
+	return configureWithOptions(opts)
+}
+
+// configureWithOptions implements the core configuration logic
+func configureWithOptions(opts ConfigureOptions) error {
+	if opts.Quick {
+		return fmt.Errorf("quick config functionality temporarily disabled")
+	}
+	
+	if opts.IsLocal {
+		return configureLocal(opts)
+	} else {
+		return configureGlobal(opts)
+	}
+}
+
+// configureLocal handles local .email configuration
+func configureLocal(opts ConfigureOptions) error {
+	// Check if local .email already exists
+	localConfigPath := filepath.Join(".email", "config.json")
+	localConfig, _ := LoadConfigFromPath(localConfigPath)
+	
+	// Check if we have command-line options to apply directly (for simple local config changes)
+	if (opts.Name != "" || opts.From != "" || opts.AICLI != "") && opts.Provider == "" && opts.Email == "" {
+		// Create new local config if it doesn't exist
+		if localConfig == nil {
+			localConfig = &Config{}
+		}
+		// Apply command-line options directly to existing config
+		if opts.Name != "" {
+			localConfig.FromName = opts.Name
+			fmt.Printf("✓ Updated display name to: %s\n", opts.Name)
+		}
+		if opts.From != "" {
+			localConfig.FromEmail = opts.From
+			fmt.Printf("✓ Updated from email to: %s\n", opts.From)
+		}
+		if opts.AICLI != "" {
+			// Map command-line AI option to internal key
+			aiMap := map[string]string{
+				"claude-code":        "claude-code",
+				"claude-code-accept": "claude-code-accept",
+				"claude-code-yolo":   "claude-code-yolo",
+				"claude":             "claude-code",
+				"claude-accept":      "claude-code-accept",
+				"claude-yolo":        "claude-code-yolo",
+				"openai":             "openai-codex",
+				"openai-codex":       "openai-codex",
+				"gemini":             "gemini-cli",
+				"gemini-cli":         "gemini-cli",
+				"opencode":           "opencode",
+				"none":               "none",
+			}
+			if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
+				localConfig.DefaultAICLI = key
+				fmt.Printf("✓ Updated AI CLI to: %s\n", GetAICLIName(key))
+			} else {
+				return fmt.Errorf("invalid AI CLI: %s", opts.AICLI)
+			}
+		}
+		if opts.Provider != "" {
+			fmt.Println("Changing email provider requires full reconfiguration.")
+			return setupConfigWithOptions(opts, true)
+		}
+		
+		// Save the updated local configuration
+		return saveLocalConfig(localConfig)
+	}
+	
+	// Create new local configuration or handle interactive mode
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("              CREATE LOCAL CONFIGURATION                ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Println("📁 This will create a .email configuration in the current")
+	fmt.Println("   directory for project-specific email settings.")
+	fmt.Println()
+	
+	return setupConfigWithOptions(opts, true)
+}
+
+// configureGlobal handles global ~/.email configuration
+func configureGlobal(opts ConfigureOptions) error {
+	// Get home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %v", err)
+	}
+	
+	globalConfigPath := filepath.Join(homeDir, ".email", "config.json")
+	globalConfig, _ := LoadConfigFromPath(globalConfigPath)
+	
+	// Check if we have command-line options to apply directly
+	if globalConfig != nil && (opts.Name != "" || opts.From != "" || opts.AICLI != "" || opts.Provider != "") {
+		// Apply command-line options directly to existing config
+		if opts.Name != "" {
+			globalConfig.FromName = opts.Name
+			fmt.Printf("✓ Updated display name to: %s\n", opts.Name)
+		}
+		if opts.From != "" {
+			globalConfig.FromEmail = opts.From
+			fmt.Printf("✓ Updated from email to: %s\n", opts.From)
+		}
+		if opts.AICLI != "" {
+			// Map command-line AI option to internal key
+			aiMap := map[string]string{
+				"claude-code":        "claude-code",
+				"claude-code-accept": "claude-code-accept",
+				"claude-code-yolo":   "claude-code-yolo",
+				"claude":             "claude-code",
+				"claude-accept":      "claude-code-accept",
+				"claude-yolo":        "claude-code-yolo",
+				"openai":             "openai-codex",
+				"openai-codex":       "openai-codex",
+				"gemini":             "gemini-cli",
+				"gemini-cli":         "gemini-cli",
+				"opencode":           "opencode",
+				"none":               "none",
+			}
+			if key, ok := aiMap[strings.ToLower(opts.AICLI)]; ok {
+				globalConfig.DefaultAICLI = key
+				fmt.Printf("✓ Updated AI CLI to: %s\n", GetAICLIName(key))
+			} else {
+				return fmt.Errorf("invalid AI CLI: %s", opts.AICLI)
+			}
+		}
+		if opts.Provider != "" {
+			fmt.Println("Changing email provider requires full reconfiguration.")
+			return setupConfigWithOptions(opts, false)
+		}
+		
+		// Save the updated global configuration
+		return SaveConfig(globalConfig)
+	}
+	
+	// Create new global configuration or handle interactive mode
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("              CREATE GLOBAL CONFIGURATION               ")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Println("This will create your global email configuration")
+	fmt.Println("in ~/.email/ that is used by default.")
+	fmt.Println()
+	
+	return setupConfigWithOptions(opts, false)
+}
+
+// setupConfigWithOptions creates configuration with command-line options
+func setupConfigWithOptions(opts ConfigureOptions, isLocal bool) error {
+	// For now, redirect to interactive setup if not all parameters provided
+	if opts.Provider == "" || opts.Email == "" {
+		return fmt.Errorf("interactive configuration required. Run 'mailos setup' to configure provider, email, and other settings")
+	}
+	
+	// Basic validation
+	if !isValidEmail(opts.Email) {
+		return fmt.Errorf("invalid email address: %s", opts.Email)
+	}
+	
+	// Get license key from global config if doing local setup
+	if isLocal {
+		if globalConfig, _ := LoadConfig(); globalConfig != nil && globalConfig.LicenseKey != "" {
+			// License key available for future use from global config
+		}
+	}
+	
+	// For now, require interactive setup for full configuration
+	// This ensures proper provider setup and credential handling
+	return fmt.Errorf("interactive configuration required for provider setup and credentials")
+}
+
+// saveLocalConfig saves configuration to local .email directory
+func saveLocalConfig(config *Config) error {
+	configDir := ".email"
+	configPath := filepath.Join(configDir, "config.json")
+
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		return err
+	}
+
+	// Save configuration
+	return SaveConfigToPath(config, configPath)
+}
+
+// isValidEmail validates email format
+func isValidEmail(email string) bool {
+	// Basic email validation - just check for @ and domain
+	parts := strings.Split(email, "@")
+	return len(parts) == 2 && len(parts[0]) > 0 && len(parts[1]) > 0 && strings.Contains(parts[1], ".")
 }
 
 func CreateReadme() error {
