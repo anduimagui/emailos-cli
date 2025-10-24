@@ -15,7 +15,7 @@ import (
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
 	
-	"github.com/anduimagui/emailos/internal/core"
+	"github.com/anduimagui/emailos-cli/internal/core"
 )
 
 type Email struct {

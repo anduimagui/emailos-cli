@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 	
-	"github.com/anduimagui/emailos/test/helpers"
-	"github.com/anduimagui/emailos/test/mocks"
-	mailos "github.com/anduimagui/emailos"
+	"github.com/anduimagui/emailos-cli/test/helpers"
+	"github.com/anduimagui/emailos-cli/test/mocks"
+	mailos "github.com/anduimagui/emailos-cli"
 )
 
 func TestEmailStructure(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 	
-	mailos "github.com/anduimagui/emailos"
+	mailos "github.com/anduimagui/emailos-cli"
 )
 
 func TestAttachmentData(t *testing.T) {

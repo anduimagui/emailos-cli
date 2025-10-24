@@ -9,7 +9,7 @@ import (
 	
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
-	"github.com/anduimagui/emailos"
+	"github.com/anduimagui/emailos-cli"
 )
 
 func main() {

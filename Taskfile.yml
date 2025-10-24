@@ -1,0 +1,438 @@
+version: '3'
+
+tasks:
+  dp:
+    desc: Deploy patch release (build, test, and publish to GitHub)
+    deps: [test, build-simple]
+    cmds:
+      - task publish-patch
+
+  build:
+    desc: Build and test authentication pipeline
+    cmds:
+      - task: build-with-login
+
+  build-simple:
+    desc: Build the mailos binary only (no tests)
+    cmds:
+      - bash scripts/build.sh
+
+  build-with-login:
+    desc: Build and test authentication pipeline without deploying
+    cmds:
+      - bash scripts/build-with-login.sh
+
+  test-deployment-pipeline:
+    desc: Test complete deployment pipeline without actually deploying
+    cmds:
+      - bash scripts/test-deployment-pipeline.sh
+
+  install:
+    desc: Install mailos globally
+    cmds:
+      - bash scripts/install.sh
+
+  update:
+    desc: Build and install mailos globally (removes old versions)
+    cmds:
+      - echo "🔄 Updating mailos globally..."
+      - rm -f ~/.local/bin/mailos
+      - rm -f ~/.local/bin/emailOS
+      - rm -f $(go env GOPATH)/bin/emailOS
+      - task install
+      - echo "✅ Global mailos updated successfully"
+
+  test:
+    desc: Run tests
+    cmds:
+      - bash scripts/test.sh
+
+  test-alias:
+    desc: Run tests for alias functionality
+    cmds:
+      - cd test && go test -run TestAliasArrayIteration -v
+      
+  test-alias-all:
+    desc: Run all alias-related tests
+    cmds:
+      - cd test && go test -run "TestAliasArrayIteration|TestWildcardDomainMatching|TestDomainWildcards|TestSpecificScenarios" -v
+      
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - bash scripts/clean.sh
+
+  dev:
+    desc: Build and run locally
+    cmds:
+      - bash scripts/dev.sh {{.CLI_ARGS}}
+
+  uninstall:
+    desc: Uninstall mailos from global installation
+    cmds:
+      - rm -f $(go env GOPATH)/bin/mailos
+      - rm -f $(go env GOPATH)/bin/emailOS
+      - echo "✓ Uninstalled mailos and emailOS alias"
+
+  npm-pack:
+    desc: Build npm package for distribution
+    dir: npm
+    cmds:
+      - npm pack
+      - echo "✓ NPM package created in npm/"
+
+  npm-publish:
+    desc: Publish to npm registry
+    dir: npm
+    cmds:
+      - npm publish
+      - echo "✓ Published to npm registry"
+
+  release:
+    desc: Build binaries for all platforms
+    cmds:
+      - bash scripts/release.sh
+
+  publish-patch:
+    desc: Bump patch version and publish to all providers (npm, Homebrew, GitHub)
+    cmds:
+      - echo "📦 Starting patch release process..."
+      # Get current version from npm package
+      - |
+        cd npm && \
+        CURRENT_VERSION=$(node -p "require('./package.json').version") && \
+        echo "Current version: v$CURRENT_VERSION" && \
+        npm version patch --no-git-tag-version && \
+        NEW_VERSION=$(node -p "require('./package.json').version") && \
+        echo "New version: v$NEW_VERSION" && \
+        cd ..
+      # Update Homebrew formula placeholder
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        sed -i.bak "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak
+      # Commit version changes
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        git add npm/package.json Formula/mailos.rb && \
+        git commit -m "Release v$NEW_VERSION" || true
+      # Create and push tag
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        git tag "v$NEW_VERSION" && \
+        echo "✅ Tagged version v$NEW_VERSION"
+      # Push to GitHub (this triggers the release workflow)
+      - |
+        echo "🚀 Pushing to GitHub..." && \
+        git push && \
+        git push --tags
+      - |
+        NEW_VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        echo "✅ Release v$NEW_VERSION initiated!" && \
+        echo "" && \
+        echo "📋 The GitHub Actions workflow will now:" && \
+        echo "  • Build binaries for all platforms" && \
+        echo "  • Create a GitHub release" && \
+        echo "  • Publish to npm registry" && \
+        echo "  • Update Homebrew formula" && \
+        echo "" && \
+        echo "🔍 Monitoring workflow status..." && \
+        sleep 10 && \
+        for i in {1..30}; do \
+          echo "⏳ Checking workflow status (attempt $i/30)..." && \
+          WORKFLOW_STATUS=$(gh run list --limit 3 --json status,conclusion,displayTitle,databaseId --jq '.[] | select(.displayTitle | test("Release|release")) | .status + ":" + (.conclusion // "") + ":" + (.databaseId | tostring)' | head -1) && \
+          if [ -n "$WORKFLOW_STATUS" ]; then \
+            STATUS=$(echo $WORKFLOW_STATUS | cut -d: -f1) && \
+            CONCLUSION=$(echo $WORKFLOW_STATUS | cut -d: -f2) && \
+            RUN_ID=$(echo $WORKFLOW_STATUS | cut -d: -f3) && \
+            if [ "$STATUS" = "completed" ]; then \
+              if [ "$CONCLUSION" = "success" ]; then \
+                echo "✅ Release workflow completed successfully!" && \
+                echo "📦 Check release at: https://github.com/anduimagui/emailos-cli/releases/tag/v$NEW_VERSION" && \
+                break; \
+              else \
+                echo "⚠️  Release workflow completed with conclusion: $CONCLUSION" && \
+                echo "🔍 Checking if GitHub release was created anyway..." && \
+                if gh release view "v$NEW_VERSION" >/dev/null 2>&1; then \
+                  echo "✅ GitHub release v$NEW_VERSION was created successfully!" && \
+                  echo "📦 Check release at: https://github.com/anduimagui/emailos-cli/releases/tag/v$NEW_VERSION" && \
+                  echo "ℹ️  Some optional jobs (npm/homebrew) may have failed - check details if needed:" && \
+                  echo "🔗 https://github.com/anduimagui/emailos-cli/actions/runs/$RUN_ID" && \
+                  break; \
+                else \
+                  echo "❌ Release workflow failed and no release was created" && \
+                  echo "🔍 Fetching detailed error information..." && \
+                  echo "🔗 View details at: https://github.com/anduimagui/emailos-cli/actions/runs/$RUN_ID" && \
+                  echo "" && \
+                  echo "📋 Failed Job Details:" && \
+                  FAILED_JOBS=$(gh api repos/anduimagui/emailos-cli/actions/runs/$RUN_ID/jobs --jq '.jobs[] | select(.conclusion == "failure") | {name, conclusion, completed_at: .completed_at, steps: [.steps[] | select(.conclusion == "failure") | {name, conclusion, number}]}' 2>/dev/null || echo "Could not fetch job details") && \
+                  echo "$FAILED_JOBS" && \
+                  echo "" && \
+                  echo "📝 Creating GitHub issue for release failure..." && \
+                  gh issue create \
+                    --title "Release workflow failure for $NEW_VERSION" \
+                    --body "**Release Failed**: v$NEW_VERSION
+
+**Workflow Run**: https://github.com/anduimagui/emailos-cli/actions/runs/$RUN_ID
+
+**Failed Jobs**: 
+\`\`\`json
+$FAILED_JOBS
+\`\`\`
+
+**Time**: $(date)
+
+**Actions Required**:
+1. Check the detailed logs in the workflow run
+2. Fix any build/dependency issues  
+3. Re-run the workflow or create a new release
+
+**Auto-generated issue** - created by release script on workflow failure." \
+                    --label "bug,release-failure,auto-generated" \
+                    2>/dev/null || echo "⚠️  Could not create GitHub issue (may need authentication)" && \
+                  break; \
+                fi \
+              fi \
+            else \
+              echo "🔄 Workflow status: $STATUS (Run ID: $RUN_ID)" && \
+              sleep 15; \
+            fi \
+          else \
+            echo "⚠️  No release workflow found yet, waiting..." && \
+            sleep 15; \
+          fi \
+        done && \
+        echo "" && \
+        echo "Monitor progress at: https://github.com/anduimagui/emailos-cli/actions"
+
+  publish-minor:
+    desc: Bump minor version and publish to all providers
+    cmds:
+      - echo "📦 Starting minor release process..."
+      - |
+        cd npm && \
+        npm version minor --no-git-tag-version && \
+        NEW_VERSION=$(node -p "require('./package.json').version") && \
+        cd .. && \
+        sed -i.bak "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak && \
+        git add npm/package.json Formula/mailos.rb && \
+        git commit -m "Release v$NEW_VERSION" && \
+        git tag "v$NEW_VERSION" && \
+        git push && git push --tags && \
+        echo "✅ Minor release v$NEW_VERSION published!"
+
+  publish-major:
+    desc: Bump major version and publish to all providers
+    cmds:
+      - echo "📦 Starting major release process..."
+      - |
+        cd npm && \
+        npm version major --no-git-tag-version && \
+        NEW_VERSION=$(node -p "require('./package.json').version") && \
+        cd .. && \
+        sed -i.bak "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak && \
+        git add npm/package.json Formula/mailos.rb && \
+        git commit -m "Release v$NEW_VERSION" && \
+        git tag "v$NEW_VERSION" && \
+        git push && git push --tags && \
+        echo "✅ Major release v$NEW_VERSION published!"
+
+  version:
+    desc: Show current version
+    cmds:
+      - bash scripts/version.sh
+
+  fix-npm-publish:
+    desc: Manually publish to npm (handles 2FA)
+    cmds:
+      - echo "Publishing to npm with 2FA support..."
+      - cd npm && npm publish --access public
+      - echo "Successfully published to npm"
+
+  fix-homebrew-sha:
+    desc: Update Homebrew formula with actual release SHA
+    cmds:
+      - echo "Updating Homebrew formula with release SHA..."
+      - |
+        VERSION=$(cd npm && node -p "require('./package.json').version") && \
+        echo "Downloading release for SHA calculation..." && \
+        curl -L -o /tmp/mailos-darwin-amd64.tar.gz \
+          "https://github.com/anduimagui/emailos/releases/download/v${VERSION}/mailos-darwin-amd64.tar.gz" && \
+        SHA256=$(shasum -a 256 /tmp/mailos-darwin-amd64.tar.gz | cut -d' ' -f1) && \
+        echo "SHA256: $SHA256" && \
+        sed -i.bak "s/PLACEHOLDER_SHA256/$SHA256/g" Formula/mailos.rb && \
+        rm Formula/mailos.rb.bak && \
+        echo "Updated Homebrew formula with SHA: $SHA256"
+
+  manual-release-complete:
+    desc: Complete a release manually (fixes GitHub Actions issues)
+    cmds:
+      - echo "Completing manual release process"
+      - echo "Step 1 Fix npm publish"
+      - task fix-npm-publish
+      - echo "Step 2 Fix Homebrew SHA"
+      - task fix-homebrew-sha
+      - echo "Step 3 Commit Homebrew formula update"
+      - VERSION=$(cd npm && node -p "require('./package.json').version") && git add Formula/mailos.rb && git commit -m "Update Homebrew formula SHA for v$VERSION" && git push || echo "No changes to commit"
+      - echo "Manual release completed successfully"
+
+  readme:
+    desc: Copy README.md to web folder for documentation access
+    cmds:
+      - cp README.md web/
+      - echo "✓ README.md copied to web folder"
+
+  test-all:
+    desc: Run comprehensive command testing script
+    cmds:
+      - bash scripts/test-all-commands.sh
+
+  test-groups:
+    desc: Run comprehensive groups functionality tests
+    cmds:
+      - echo "🧪 Running groups functionality tests..."
+      - task build-simple
+      - echo "Running Go unit tests for groups..."
+      - go test -v -run "TestGroupManagement|TestAdvancedGroupOperations"
+      - echo "Running command framework tests for groups..."
+      - bash scripts/test-groups-framework.sh
+      - echo "✅ Groups tests completed"
+
+  test-framework:
+    desc: Test the test framework itself
+    cmds:
+      - echo "🧪 Testing test framework..."
+      - go run test/test_framework/main.go summary
+      - echo "✅ Test framework working"
+
+  test-categories:
+    desc: List all available test categories
+    cmds:
+      - echo "📋 Available test categories and command types:"
+      - go run test/test_framework/main.go summary
+
+  test-help:
+    desc: Run all help command tests
+    cmds:
+      - echo "🧪 Running help command tests..."
+      - task build-simple
+      - bash scripts/test-help-commands.sh
+      - echo "✅ Help tests completed"
+
+  test-errors:
+    desc: Run all error handling tests
+    cmds:
+      - echo "🧪 Running error handling tests..."
+      - task build-simple
+      - bash scripts/test-error-commands.sh
+      - echo "✅ Error handling tests completed"
+
+  test-quick:
+    desc: Run quick tests of basic commands
+    cmds:
+      - echo "🧪 Running quick mailos command tests..."
+      - task build
+      - echo "Testing help commands..."
+      - ./mailos --help > /dev/null && echo "✓ Help command works" || echo "✗ Help command failed"
+      - ./mailos --version > /dev/null && echo "✓ Version command works" || echo "✗ Version command failed"
+      - echo "Testing configuration commands..."
+      - ./mailos setup --help > /dev/null && echo "✓ Setup help works" || echo "✗ Setup help failed"
+      - ./mailos config --help > /dev/null && echo "✓ Config help works" || echo "✗ Config help failed"
+      - echo "Testing read commands..."
+      - ./mailos read --help > /dev/null && echo "✓ Read help works" || echo "✗ Read help failed"
+      - echo "Testing search commands..."
+      - ./mailos search --help > /dev/null && echo "✓ Search help works" || echo "✗ Search help failed"
+      - echo "Testing draft commands..."
+      - ./mailos drafts --help > /dev/null && echo "✓ Drafts help works" || echo "✗ Drafts help failed"
+      - echo "✅ Quick tests completed"
+
+  test-enhanced:
+    desc: Run enhanced test suite with modern features (Jest/pytest-like)
+    cmds:
+      - bash scripts/test-enhanced.sh {{.CLI_ARGS}}
+
+  test-watch:
+    desc: Run tests in watch mode (re-run on file changes)
+    cmds:
+      - bash scripts/test-enhanced.sh --watch {{.CLI_ARGS}}
+
+  test-coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - bash scripts/test-enhanced.sh --coverage {{.CLI_ARGS}}
+
+  test-mock:
+    desc: Run tests with mocked dependencies only
+    cmds:
+      - bash scripts/test-enhanced.sh --mock {{.CLI_ARGS}}
+
+  test-unit:
+    desc: Run only unit tests
+    cmds:
+      - bash scripts/test-enhanced.sh unit {{.CLI_ARGS}}
+
+  test-integration:
+    desc: Run only integration tests
+    cmds:
+      - bash scripts/test-enhanced.sh integration {{.CLI_ARGS}}
+
+  test-send:
+    desc: Run send command tests
+    cmds:
+      - bash scripts/test-enhanced.sh send {{.CLI_ARGS}}
+
+  test-read:
+    desc: Run read command tests
+    cmds:
+      - bash scripts/test-enhanced.sh read {{.CLI_ARGS}}
+
+  test-search:
+    desc: Run search command tests
+    cmds:
+      - bash scripts/test-enhanced.sh search {{.CLI_ARGS}}
+
+  test-verbose:
+    desc: Run tests with verbose output
+    cmds:
+      - bash scripts/test-enhanced.sh --verbose {{.CLI_ARGS}}
+
+  release-local:
+    desc: Complete local release process (builds, tests, packages)
+    cmds:
+      - echo "Starting complete local release process..."
+      - task test
+      - task release
+      - task npm-pack
+      - echo "Creating release archives..."
+      - cd dist && for file in mailos-*; do if [[ "$file" != *.exe ]] && [[ "$file" != *.tar.gz ]] && [[ "$file" != *.zip ]]; then tar czf "${file}.tar.gz" "$file" && rm "$file"; elif [[ "$file" == *.exe ]]; then zip "${file%.*}.zip" "$file" && rm "$file"; fi; done
+      - echo "Generating checksums..."
+      - cd dist && sha256sum *.tar.gz *.zip > checksums.txt 2>/dev/null || sha256sum *.tar.gz > checksums.txt 2>/dev/null || echo "No archives found"
+      - echo "Local release completed in dist/ directory"
+      - echo "Generated files:"
+      - ls -la dist/
+
+  simulate-github-release:
+    desc: Simulate the complete GitHub Actions release workflow locally
+    cmds:
+      - echo "Simulating GitHub Actions release workflow..."
+      - echo "Step 1 Building cross-platform binaries..."
+      - task release-local
+      - echo "Step 2 Testing npm package..."
+      - cd npm && npm test || echo "WARNING npm tests failed or not configured"
+      - echo "Step 3 Validating package.json version..."
+      - cd npm && VERSION=$(node -p "require('./package.json').version") && echo "Package version v$VERSION"
+      - echo "Step 4 Checking Homebrew formula..."
+      - 'if [ -f "Formula/mailos.rb" ]; then echo "Homebrew formula exists"; grep -E "version|sha256" Formula/mailos.rb || echo "WARNING Version/SHA not found in formula"; else echo "WARNING Homebrew formula not found"; fi'
+      - echo "Local simulation completed successfully"
+      - echo "Next steps to complete release"
+      - echo "1. Run task dp to create git tag and trigger GitHub Actions"
+      - echo "2. Monitor https://github.com/anduimagui/emailos/actions"
+      - echo "3. Verify npm publish https://www.npmjs.com/package/mailos"
+      - echo "4. Test Homebrew update brew update && brew upgrade mailos"
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list

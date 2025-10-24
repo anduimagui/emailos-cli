@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 	
-	mailos "github.com/anduimagui/emailos"
+	mailos "github.com/anduimagui/emailos-cli"
 )
 
 // AssertEqual checks if two values are equal

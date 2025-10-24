@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 	
-	mailos "github.com/anduimagui/emailos"
+	mailos "github.com/anduimagui/emailos-cli"
 )
 
 // MockIMAPServer simulates an IMAP server for testing

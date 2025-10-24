@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	mailos "github.com/anduimagui/emailos"
+	mailos "github.com/anduimagui/emailos-cli"
 	"github.com/spf13/cobra"
 )
 

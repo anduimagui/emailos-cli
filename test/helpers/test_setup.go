@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 	
-	mailos "github.com/anduimagui/emailos"
+	mailos "github.com/anduimagui/emailos-cli"
 )
 
 // TestConfig holds configuration for test setup
