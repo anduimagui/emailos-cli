@@ -1,6 +1,6 @@
 {
   "name": "mailos",
-  "version": "0.1.63",
+  "version": "0.1.64",
   "description": "Command-line email client with AI integration and support for multiple providers",
   "keywords": [
     "email",
