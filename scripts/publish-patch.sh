@@ -144,6 +144,17 @@ for i in {1..30}; do
                     echo "$FAILED_JOBS"
                     echo ""
                     
+                    # Get detailed logs from the first failed job for specific error messages
+                    echo "🔍 Fetching detailed error logs..."
+                    FIRST_FAILED_JOB_ID=$(gh api repos/anduimagui/emailos-cli/actions/runs/$RUN_ID/jobs --jq '.jobs[] | select(.conclusion == "failure") | .id' | head -1)
+                    if [ -n "$FIRST_FAILED_JOB_ID" ]; then
+                        echo "📋 Error details from job $FIRST_FAILED_JOB_ID:"
+                        # Extract the actual error lines from the logs
+                        ERROR_LOGS=$(gh api repos/anduimagui/emailos-cli/actions/jobs/$FIRST_FAILED_JOB_ID/logs 2>/dev/null | grep -E "(error|Error|ERROR|##\[error\]|fail|FAIL|exit code)" | tail -10 || echo "Could not fetch error logs")
+                        echo "$ERROR_LOGS"
+                        echo ""
+                    fi
+                    
                     # Create GitHub issue for the failure
                     echo "📝 Creating GitHub issue for release failure..."
                     ISSUE_BODY="Release Failed: v$NEW_VERSION
@@ -151,7 +162,14 @@ for i in {1..30}; do
 Workflow Run: https://github.com/anduimagui/emailos-cli/actions/runs/$RUN_ID
 
 Failed Jobs:
+\`\`\`json
 $FAILED_JOBS
+\`\`\`
+
+Error Details:
+\`\`\`
+${ERROR_LOGS:-No detailed error logs available}
+\`\`\`
 
 Time: $(date)
 
