@@ -41,7 +41,20 @@ jobs:
           go-version: '1.24'
 
       - name: Tidy modules
-        run: go mod tidy
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+          GO111MODULE: on
+        run: |
+          echo "🔍 Debugging Go module setup"
+          go version
+          echo "GOMOD: $(go env GOMOD)"
+          echo "GOPATH: $(go env GOPATH)"
+          echo "PWD: $(pwd)"
+          echo "🔍 Listing internal directory"
+          ls -la internal/ || echo "No internal directory found"
+          echo "🔍 Running go mod tidy with explicit environment"
+          go mod tidy -v
         
       - name: Security Scan
         run: |

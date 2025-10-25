@@ -150,7 +150,7 @@ for i in {1..30}; do
                     if [ -n "$FIRST_FAILED_JOB_ID" ]; then
                         echo "📋 Error details from job $FIRST_FAILED_JOB_ID:"
                         # Extract the actual error lines from the logs
-                        ERROR_LOGS=$(gh api repos/anduimagui/emailos-cli/actions/jobs/$FIRST_FAILED_JOB_ID/logs 2>/dev/null | grep -E "(error|Error|ERROR|##\[error\]|fail|FAIL|exit code)" | tail -10 || echo "Could not fetch error logs")
+                        ERROR_LOGS=$(gh api repos/anduimagui/emailos-cli/actions/jobs/$FIRST_FAILED_JOB_ID/logs 2>/dev/null | grep -A 10 -B 5 -E "(finding module for package|no matching versions|##\[error\]|Process completed with exit code)" | tail -20 || echo "Could not fetch error logs")
                         echo "$ERROR_LOGS"
                         echo ""
                     fi
@@ -180,11 +180,18 @@ Actions Required:
 
 Auto-generated issue created by release script."
                     
-                    gh issue create \
+                    if gh issue create \
                         --title "Release workflow failure for $NEW_VERSION" \
                         --body "$ISSUE_BODY" \
-                        --label "bug,release-failure,auto-generated" \
-                        2>/dev/null || echo "⚠️  Could not create GitHub issue (may need authentication)"
+                        2>/dev/null; then
+                        echo "✅ GitHub issue created successfully"
+                    else
+                        echo "⚠️  Could not create GitHub issue - trying without labels"
+                        gh issue create \
+                            --title "Release workflow failure for $NEW_VERSION" \
+                            --body "$ISSUE_BODY" \
+                            2>/dev/null || echo "❌ Failed to create GitHub issue (check authentication)"
+                    fi
                     
                     break
                 fi
